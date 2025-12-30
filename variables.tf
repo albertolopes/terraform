@@ -1,0 +1,12 @@
+variable "kubeconfig_path" {
+  type        = string
+  description = "Path to kubeconfig file for the kubernetes provider. If empty, ~/.kube/config will be used."
+  default     = ""
+}
+
+variable "container_name" {
+  type        = string
+  description = "Name for the local Docker container created by Terraform"
+  default     = "tutorial"
+}
+
