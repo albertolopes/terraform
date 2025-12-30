@@ -1,0 +1,56 @@
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+crash.log
+override.tf
+override.tf.json
+*_override.tf
+.terraform.lock.hcl
+.terraform.tfvars
+.terraform.tfvars.json
+terraform.tfvars
+terraform.tfvars.json
+.terraform.tfstate.backup
+
+# Sensitive data
+*.pem
+*.key
+*.crt
+*.env
+.vault-token
+
+# k3d / k3s / kubeconfig
+.k3d_created
+kubeconfig
+kubeconfig.*
+.kube/
+.kube/*
+.kubeconfig
+*.kubeconfig
+
+# Docker
+docker-compose.override.yml
+docker-compose.*.yml
+Dockerfile.*
+
+# Logs
+*.log
+
+# IDEs and editors
+.vscode/
+.idea/
+*.iml
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Misc
+*.bak
+*.tmp
+*~
+
+# Ignore local Terraform crash files
+crash.log
+
