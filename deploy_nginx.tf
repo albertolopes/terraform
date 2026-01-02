@@ -7,8 +7,8 @@ resource "null_resource" "deploy_nginx" {
       KUBECONFIG  = "${path.module}/.k3d_kubeconfig"
     }
 
-    # Run the consolidated runner which pre-pulls/imports images and drives the full deploy
-    command = "bash ${path.module}/run_deploy.sh"
+    # Run the deployment script which creates ConfigMaps, secrets and Deployment/Service
+    command = "bash ${path.module}/scripts/deploy_nginx.sh"
     interpreter = ["/bin/bash", "-c"]
   }
 

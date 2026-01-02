@@ -1,17 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# run_deploy.sh
-# Runs the full flow: ensure scripts executable, pre-pull/import images (ingress + nginx),
-# run terraform init/apply and collect diagnostics if needed.
-# Usage: run from the Terraform module directory:
-#   cd /home/beto/Documentos/aaa-pessoal/terraform
-#   ./run_deploy.sh 2>&1 | tee run_deploy.log
+# run_deploy.sh (moved to scripts/)
+# This is the original run_deploy.sh content moved here; keep it executable.
 
 PROJECT_DIR="$(pwd)"
 K3D_CLUSTER_NAME="mycluster"
-COMPOSE_SRC="./docker-compose.test.yml"
-COMPOSE_DEST="./docker-compose.yml"
+# prefer compose files under docker/ directory
+COMPOSE_SRC="./docker/nginx.test.yaml"
+COMPOSE_DEST="./docker/nginx.yaml"
 
 # Ensure k3d cluster exists (create if missing) and export kubeconfig
 ensure_k3d_cluster() {
@@ -103,8 +100,9 @@ echo "Working dir: $PROJECT_DIR"
 # make scripts executable
 chmod +x ./scripts/*.sh || true
 
-# ensure docker-compose.yml present
+# ensure docker/nginx.yaml present (fallback to root docker-compose.yml if needed)
 if [ -f "$COMPOSE_SRC" ] && [ ! -f "$COMPOSE_DEST" ]; then
+  mkdir -p ./docker
   cp -f "$COMPOSE_SRC" "$COMPOSE_DEST"
   echo "Copied $COMPOSE_SRC -> $COMPOSE_DEST"
 fi
@@ -168,8 +166,17 @@ for img in "${INGRESS_IMAGES[@]}"; do
   done
 done
 
+# Determine which compose path to use: prefer docker/nginx.yaml, then legacy root docker-compose.yml
+if [ -f "$COMPOSE_DEST" ]; then
+  COMPOSE_PATH="$COMPOSE_DEST"
+elif [ -f ./docker-compose.yml ]; then
+  COMPOSE_PATH="./docker-compose.yml"
+else
+  COMPOSE_PATH=""
+fi
+
 # Extract nginx image from compose and pre-pull/import using awk
-if [ -f docker-compose.yml ]; then
+if [ -n "$COMPOSE_PATH" ] && [ -f "$COMPOSE_PATH" ]; then
   # Use awk to extract the image token under the nginx service, then strip quotes in shell
   NGINX_IMAGE=$(awk '
     BEGIN{in_services=0; in_nginx=0}
@@ -182,16 +189,16 @@ if [ -f docker-compose.yml ]; then
       gsub(/^[[:space:]]+|[[:space:]]+$/,"",line)
       print line; exit
     }
-  ' docker-compose.yml || true)
+  ' "$COMPOSE_PATH" || true)
   # strip surrounding single or double quotes if present
   if [ -n "$NGINX_IMAGE" ]; then
     # strip surrounding double or single quotes (portable)
     NGINX_IMAGE=$(printf '%s' "$NGINX_IMAGE" | sed -e 's/^"//' -e 's/"$//' -e "s/^'//" -e "s/'$//")
   else
-    echo "Could not detect nginx image in docker-compose.yml" >&2
+    echo "Could not detect nginx image in compose file ($COMPOSE_PATH)" >&2
   fi
 else
-  echo "docker-compose.yml missing; aborting" >&2
+  echo "compose file missing (looked for docker/nginx.yaml or ./docker-compose.yml); aborting" >&2
   exit 1
 fi
 
@@ -206,7 +213,7 @@ if [ -n "$NGINX_IMAGE" ]; then
     echo "Warning: docker pull $NGINX_IMAGE failed; cluster may try to pull it" >&2
   fi
 else
-  echo "Could not detect nginx image in docker-compose.yml" >&2
+  echo "Could not detect nginx image in compose file ($COMPOSE_PATH)" >&2
 fi
 
 # Note: do NOT run terraform init/apply from here — this script is executed by Terraform
@@ -264,3 +271,4 @@ if [ -n "$NG_POD" ]; then
 fi
 
 echo "run_deploy.sh finished"
+

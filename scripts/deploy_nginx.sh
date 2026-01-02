@@ -156,19 +156,59 @@ else
 fi
 
 # If there's a local ./nginx directory, create ConfigMaps from parts if they exist
-if [ -d "$MODULE_DIR/nginx" ]; then
-  echo "Creating/updating ConfigMaps from $MODULE_DIR/nginx"
+# If not present, create a minimal fallback config in a temp dir so the deployment can start.
+FALLBACK_NGINX_DIR=""
+if [ ! -d "$MODULE_DIR/nginx" ]; then
+  echo "No ./nginx folder found; creating temporary minimal nginx config for deployment"
+  FALLBACK_NGINX_DIR="$MODULE_DIR/.nginx_auto"
+  mkdir -p "$FALLBACK_NGINX_DIR/conf.d" "$FALLBACK_NGINX_DIR/snippets" || true
+  cat > "$FALLBACK_NGINX_DIR/nginx.conf" <<'NGINXCONF'
+user  nginx;
+worker_processes  1;
+error_log  /var/log/nginx/error.log warn;
+pid        /var/run/nginx.pid;
+
+events {
+    worker_connections  1024;
+}
+
+http {
+    include       /etc/nginx/mime.types;
+    default_type  application/octet-stream;
+    sendfile        on;
+    keepalive_timeout  65;
+    server {
+        listen       80;
+        server_name  localhost;
+        location / {
+            root   /usr/share/nginx/html;
+            index  index.html index.htm;
+        }
+    }
+}
+NGINXCONF
+  echo "<html><body><h1>nginx default</h1></body></html>" > "$FALLBACK_NGINX_DIR/index.html"
+fi
+
+# Use DIR variable for creating configmaps; prefer real dir over fallback
+NGINX_CONFIG_SRC_DIR="$MODULE_DIR/nginx"
+if [ ! -d "$NGINX_CONFIG_SRC_DIR" ] && [ -n "$FALLBACK_NGINX_DIR" ]; then
+  NGINX_CONFIG_SRC_DIR="$FALLBACK_NGINX_DIR"
+fi
+
+if [ -d "$NGINX_CONFIG_SRC_DIR" ]; then
+  echo "Creating/updating ConfigMaps from $NGINX_CONFIG_SRC_DIR"
   # nginx.conf
-  if [ -f "$MODULE_DIR/nginx/nginx.conf" ]; then
-    kubectl --kubeconfig "$KUBECONFIG" -n default create configmap nginx-config --from-file=nginx.conf="$MODULE_DIR/nginx/nginx.conf" --dry-run=client -o yaml | kubectl --kubeconfig "$KUBECONFIG" apply -f - || true
+  if [ -f "$NGINX_CONFIG_SRC_DIR/nginx.conf" ]; then
+    kubectl --kubeconfig "$KUBECONFIG" -n default create configmap nginx-config --from-file=nginx.conf="$NGINX_CONFIG_SRC_DIR/nginx.conf" --dry-run=client -o yaml | kubectl --kubeconfig "$KUBECONFIG" apply -f - || true
   fi
   # conf.d
-  if [ -d "$MODULE_DIR/nginx/conf.d" ]; then
-    kubectl --kubeconfig "$KUBECONFIG" -n default create configmap nginx-confdir --from-file="$MODULE_DIR/nginx/conf.d" --dry-run=client -o yaml | kubectl --kubeconfig "$KUBECONFIG" apply -f - || true
+  if [ -d "$NGINX_CONFIG_SRC_DIR/conf.d" ]; then
+    kubectl --kubeconfig "$KUBECONFIG" -n default create configmap nginx-confdir --from-file="$NGINX_CONFIG_SRC_DIR/conf.d" --dry-run=client -o yaml | kubectl --kubeconfig "$KUBECONFIG" apply -f - || true
   fi
   # snippets
-  if [ -d "$MODULE_DIR/nginx/snippets" ]; then
-    kubectl --kubeconfig "$KUBECONFIG" -n default create configmap nginx-snippets --from-file="$MODULE_DIR/nginx/snippets" --dry-run=client -o yaml | kubectl --kubeconfig "$KUBECONFIG" apply -f - || true
+  if [ -d "$NGINX_CONFIG_SRC_DIR/snippets" ]; then
+    kubectl --kubeconfig "$KUBECONFIG" -n default create configmap nginx-snippets --from-file="$NGINX_CONFIG_SRC_DIR/snippets" --dry-run=client -o yaml | kubectl --kubeconfig "$KUBECONFIG" apply -f - || true
   fi
 fi
 
@@ -176,6 +216,11 @@ fi
 if [ -d "$MODULE_DIR/html" ]; then
   echo "Creating/updating ConfigMap for html content from $MODULE_DIR/html (only used if small)"
   kubectl --kubeconfig "$KUBECONFIG" -n default create configmap nginx-html --from-file="$MODULE_DIR/html" --dry-run=client -o yaml | kubectl --kubeconfig "$KUBECONFIG" apply -f - || true
+else
+  # if fallback index exists, create nginx-html configmap from fallback
+  if [ -n "$FALLBACK_NGINX_DIR" ] && [ -f "$FALLBACK_NGINX_DIR/index.html" ]; then
+    kubectl --kubeconfig "$KUBECONFIG" -n default create configmap nginx-html --from-file="$FALLBACK_NGINX_DIR/index.html" --dry-run=client -o yaml | kubectl --kubeconfig "$KUBECONFIG" apply -f - || true
+  fi
 fi
 
 # If certs exists, create a TLS secret (expects tls.crt + tls.key or cert.pem + key.pem)
@@ -195,6 +240,46 @@ else
   TLS_SECRET=""
 fi
 
+# prepare service ports and TLS volumes conditionally
+if [ -n "${TLS_SECRET:-}" ]; then
+  SERVICE_PORTS=$(cat <<'EOF'
+    - name: http
+      protocol: TCP
+      port: 80
+      targetPort: 80
+      nodePort: 30080
+    - name: https
+      protocol: TCP
+      port: 443
+      targetPort: 443
+      nodePort: 30443
+EOF
+)
+  CERT_VOLUME_MOUNT=$(cat <<'EOF'
+        - name: nginx-certs
+          mountPath: /etc/nginx/certs
+          readOnly: true
+EOF
+)
+  SECRET_VOLUME=$(cat <<EOF
+      - name: nginx-certs
+        secret:
+          secretName: ${TLS_SECRET}
+EOF
+)
+else
+  SERVICE_PORTS=$(cat <<'EOF'
+    - name: http
+      protocol: TCP
+      port: 80
+      targetPort: 80
+      nodePort: 30080
+EOF
+)
+  CERT_VOLUME_MOUNT=""
+  SECRET_VOLUME=""
+fi
+
 # apply nginx deployment + service + configmaps (use DEPLOY_IMAGE detected/imported earlier)
 cat <<YAML | kubectl --kubeconfig "$KUBECONFIG" apply -f -
 apiVersion: v1
@@ -205,14 +290,7 @@ spec:
   selector:
     app: nginx
   ports:
-    - protocol: TCP
-      port: 80
-      targetPort: 80
-      nodePort: 30080
-    - protocol: TCP
-      port: 443
-      targetPort: 443
-      nodePort: 30443
+${SERVICE_PORTS}
   type: NodePort
 ---
 apiVersion: apps/v1
@@ -255,10 +333,7 @@ spec:
           mountPath: /etc/nginx/snippets
         - name: html-content
           mountPath: /usr/share/nginx/html
-        # mount TLS secret (if present) - will be created earlier
-        - name: nginx-certs
-          mountPath: /etc/nginx/certs
-          readOnly: true
+${CERT_VOLUME_MOUNT}
       volumes:
       - name: nginx-config
         configMap:
@@ -274,9 +349,7 @@ spec:
           name: nginx-html
       - name: html-content
         emptyDir: {}
-      - name: nginx-certs
-        secret:
-          secretName: ${TLS_SECRET:-""}
+${SECRET_VOLUME}
 YAML
 
 # If DEPLOY_IMAGE is different than requested IMAGE or contains a digest, ensure the Deployment uses it

@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 MODULE_DIR=${MODULE_DIR:-$PWD}
-COMPOSE_FILE="$MODULE_DIR/docker-compose.yml"
+COMPOSE_FILE="$MODULE_DIR/docker/nginx.yaml"
 KUBECONFIG=${KUBECONFIG:-$PWD/.k3d_kubeconfig}
 
 if [ ! -f "$COMPOSE_FILE" ]; then
-  echo "docker-compose.yml not found at $COMPOSE_FILE"
-  echo "Please place your docker-compose.yml in the module directory or set COMPOSE_FILE to point to it"
+  echo "nginx.yaml not found at $COMPOSE_FILE"
+  echo "Please place your nginx.yaml in the module directory or set COMPOSE_FILE to point to it"
   exit 1
 fi
 

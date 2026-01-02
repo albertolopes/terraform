@@ -32,10 +32,7 @@ override.tf.json
 .nginx_image.tar
 *.tar
 
-# Docker
-docker-compose.override.yml
-docker-compose.*.yml
-docker-compose.*.yaml
+# ignore our new compose names
 *.log
 
 # Logs
