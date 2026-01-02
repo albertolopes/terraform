@@ -14,16 +14,21 @@ fi
 
 # Allow overriding the host port for Postgres LB mapping
 K3D_POSTGRES_HOST_PORT=${K3D_POSTGRES_HOST_PORT:-15432}
+# MinIO host ports (hostPort:containerPort mapping)
+K3D_MINIO_HOST_PORT=${K3D_MINIO_HOST_PORT:-19000}
+K3D_MINIO_CONSOLE_HOST_PORT=${K3D_MINIO_CONSOLE_HOST_PORT:-19001}
 
 if ! k3d cluster list | grep -q "^mycluster\b"; then
   echo "Creating k3d cluster 'mycluster' with port mapping 80:80@loadbalancer, 443:443@loadbalancer, 30080:30080@loadbalancer, ${K3D_POSTGRES_HOST_PORT}:5432@loadbalancer"
   k3d cluster create mycluster --wait --k3s-arg "--disable=traefik@server:0" \
-    --port "80:80@loadbalancer" --port "443:443@loadbalancer" --port "30080:30080@loadbalancer" --port "${K3D_POSTGRES_HOST_PORT}:5432@loadbalancer"
+    --port "80:80@loadbalancer" --port "443:443@loadbalancer" --port "30080:30080@loadbalancer" \
+    --port "${K3D_POSTGRES_HOST_PORT}:5432@loadbalancer" --port "${K3D_MINIO_HOST_PORT}:9000@loadbalancer" --port "${K3D_MINIO_CONSOLE_HOST_PORT}:9001@loadbalancer"
 else
   echo "Cluster 'mycluster' exists — recreating to ensure correct port mappings and Traefik disabled"
   k3d cluster delete mycluster || true
   k3d cluster create mycluster --wait --k3s-arg "--disable=traefik@server:0" \
-    --port "80:80@loadbalancer" --port "443:443@loadbalancer" --port "30080:30080@loadbalancer" --port "${K3D_POSTGRES_HOST_PORT}:5432@loadbalancer"
+    --port "80:80@loadbalancer" --port "443:443@loadbalancer" --port "30080:30080@loadbalancer" \
+    --port "${K3D_POSTGRES_HOST_PORT}:5432@loadbalancer" --port "${K3D_MINIO_HOST_PORT}:9000@loadbalancer" --port "${K3D_MINIO_CONSOLE_HOST_PORT}:9001@loadbalancer"
 fi
 
 # export kubeconfig for this cluster to module path so other steps can read it
