@@ -15,3 +15,9 @@ variable "nginx_image" {
   description = "Docker image for nginx deployment (can override via -var or terraform.tfvars)"
   default     = "nginx:1.29.4-alpine"
 }
+
+variable "postgres_image" {
+  type        = string
+  description = "Docker image for postgres deployment (overrideable)"
+  default     = "postgres:15"
+}

@@ -13,6 +13,6 @@ resource "null_resource" "deploy_nginx" {
   }
 
   triggers = {
-    deploy_marker = timestamp()
+    nginx_image   = var.nginx_image
   }
 }

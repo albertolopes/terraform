@@ -8,9 +8,7 @@ resource "null_resource" "k3d_cluster" {
     command = "bash ${path.module}/scripts/k3d_create.sh"
   }
 
-  triggers = {
-    kubeconfig_md5 = fileexists("${path.module}/.k3d_kubeconfig") ? filemd5("${path.module}/.k3d_kubeconfig") : timestamp()
-  }
+  # No triggers - creation is handled by provisioner and lifecycle
 
   lifecycle {
     create_before_destroy = true
