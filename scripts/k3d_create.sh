@@ -33,4 +33,8 @@ fi
 
 # export kubeconfig for this cluster to module path so other steps can read it
 k3d kubeconfig get mycluster > "$MODULE_DIR/.k3d_kubeconfig"
+# Replace 0.0.0.0 endpoints with 127.0.0.1 to avoid kubectl trying to connect to 0.0.0.0
+if command -v sed >/dev/null 2>&1; then
+  sed -i.bak -e 's/0.0.0.0/127.0.0.1/g' "$MODULE_DIR/.k3d_kubeconfig" || true
+fi
 chmod 600 "$MODULE_DIR/.k3d_kubeconfig"

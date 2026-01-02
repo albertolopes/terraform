@@ -68,6 +68,12 @@ merge_kubeconfig() {
   fi
 }
 
+# source common lib
+if [ -f ./scripts/lib.sh ]; then
+  # shellcheck disable=SC1091
+  . ./scripts/lib.sh
+fi
+
 # Import an image into k3d cluster using the CLI variant available
 k3d_import() {
   src="$1"
@@ -75,24 +81,8 @@ k3d_import() {
     echo "k3d not found; cannot import $src" >&2
     return 2
   fi
-
-  # try variants in order
-  if k3d image import -c "$K3D_CLUSTER_NAME" "$src" >/dev/null 2>&1; then
-    echo "k3d import succeeded (variant: -c) for $src"
-    return 0
-  fi
-  if k3d image import --cluster "$K3D_CLUSTER_NAME" "$src" >/dev/null 2>&1; then
-    echo "k3d import succeeded (variant: --cluster) for $src"
-    return 0
-  fi
-  if k3d image import "$src" >/dev/null 2>&1; then
-    echo "k3d import succeeded (variant: plain) for $src"
-    return 0
-  fi
-
-  # fallback: return non-zero so caller can try tar-based import
-  echo "k3d image import failed for $src with all tested variants" >&2
-  return 1
+  # delegate to shared wrapper
+  k3d_import_cmd "$src"
 }
 
 echo "Working dir: $PROJECT_DIR"

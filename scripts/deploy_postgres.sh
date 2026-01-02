@@ -45,6 +45,24 @@ k3d_import() {
   return 1
 }
 
+# source common lib
+if [ -f ./scripts/lib.sh ]; then
+  # shellcheck disable=SC1091
+  . ./scripts/lib.sh
+  # ensure kubeconfig endpoints point at localhost instead of 0.0.0.0
+  if declare -F fix_kubeconfig_paths >/dev/null 2>&1; then
+    fix_kubeconfig_paths || true
+  fi
+fi
+
+# ensure using the per-cluster kubeconfig file
+export KUBECONFIG=${KUBECONFIG:-$MODULE_DIR/.k3d_kubeconfig}
+
+# wait for kube API to be available before applying manifests
+if declare -F wait_for_kube_api >/dev/null 2>&1; then
+  wait_for_kube_api "$KUBECONFIG" 60 2 || true
+fi
+
 # If a docker/docker.yaml exists, prefer the postgres image defined there
 if [ -f "$MODULE_DIR/docker/postgres.yaml" ]; then
   YAML_IMAGE=$(awk '/^[[:space:]]*postgres:\s*$/ { inp=1; next } inp && /image:/ { gsub(/^[[:space:]]*image:[[:space:]]*/,"",$0); print $0; exit }' "$MODULE_DIR/docker/postgres.yaml" | tr -d '"' | tr -d "'" || true)
@@ -61,13 +79,13 @@ if ! docker image inspect "$IMAGE" >/dev/null 2>&1; then
 fi
 # Try k3d import by name, fallback to docker save + k3d import
 if command -v k3d >/dev/null 2>&1; then
-  if k3d_import "$IMAGE"; then
+  if k3d_import_cmd "$IMAGE"; then
     echo "k3d import by name succeeded for $IMAGE"
   else
     TAR="$MODULE_DIR/.postgres_image.tar"
     docker save -o "$TAR" "$IMAGE" || true
     if [ -f "$TAR" ]; then
-      k3d image import -c mycluster "$TAR" >/dev/null 2>&1 || true
+      k3d_import_cmd "$TAR" >/dev/null 2>&1 || true
       rm -f "$TAR" || true
     fi
   fi
@@ -76,7 +94,7 @@ fi
 # Determine deploy image ref (prefer imported REF if any)
 DEPLOY_IMAGE="$IMAGE"
 if command -v k3d >/dev/null 2>&1; then
-  REFS=$(k3d image list -c mycluster 2>/dev/null || true)
+  REFS=$(k3d_list 2>/dev/null || true)
   if echo "$REFS" | grep -q -F "$IMAGE"; then
     DEPLOY_IMAGE=$(echo "$REFS" | grep -F "$IMAGE" | head -n1 | awk '{print $1}')
   fi
@@ -87,11 +105,16 @@ echo "Using image for deployment: $DEPLOY_IMAGE"
 HOST_PATH=""
 if [ -f "$MODULE_DIR/docker/postgres.yaml" ]; then
   # Simpler and robust: look for a volume line that contains an absolute host path (starts with '/')
-  HOST_PATH=$(grep -Po '^[[:space:]]*-\s*"(\/[^\"]+)' "$MODULE_DIR/docker/postgres.yaml" 2>/dev/null | sed -E 's/^[[:space:]]*-\s*"//' | head -n1 || true)
+  HOST_PATH=$(grep -Po '^[[:space:]]*-\s*"(\/[^"]+)' "$MODULE_DIR/docker/postgres.yaml" 2>/dev/null | sed -E 's/^[[:space:]]*-\s*"//' | head -n1 || true)
   # fallback: unquoted path (no double quotes)
   if [ -z "$HOST_PATH" ]; then
-    HOST_PATH=$(grep -Po '^[[:space:]]*-\s*(\/[^:]+):' "$MODULE_DIR/docker/postgres.yaml" 2>/dev/null | sed -E 's/^[[:space:]]*-\s*//' | sed -E 's/:$//' | head -n1 || true)
+    HOST_PATH=$(grep -Po '^[[:space:]]*\-\s*(\/[^:]+):' "$MODULE_DIR/docker/postgres.yaml" 2>/dev/null | sed -E 's/^[[:space:]]*-\s*//' | sed -E 's/:$//' | head -n1 || true)
   fi
+fi
+
+# If repo-relative volume directory exists, prefer it (so we always look at volume/postgres)
+if [ -z "$HOST_PATH" ] && [ -d "$MODULE_DIR/volume/postgres" ]; then
+  HOST_PATH="$MODULE_DIR/volume/postgres"
 fi
 
 # If the PVC already exists and is Bound, don't attempt to change it (PVC spec is immutable)
@@ -108,11 +131,28 @@ if [ "$PVC_BOUND" = "false" ]; then
   PV_NAME=""
   if [ -n "$HOST_PATH" ]; then
     # prefer dynamic creation from repo-relative volume folder
-    HOST_VOL_DIR="$MODULE_DIR/volume/postgres"
+    # resolve host path to absolute path for PV stability
+    if command -v readlink >/dev/null 2>&1; then
+      HOST_VOL_DIR=$(readlink -f "$HOST_PATH")
+    elif command -v realpath >/dev/null 2>&1; then
+      HOST_VOL_DIR=$(realpath "$HOST_PATH")
+    else
+      HOST_VOL_DIR="$HOST_PATH"
+    fi
     PV_NAME="pv-postgres-hostpath"
     if [ -d "$HOST_VOL_DIR" ]; then
+      # If an existing PV with same name is Released, delete it so we can re-create and bind
+      EXISTING_PV_PHASE=$(kubectl --kubeconfig "$KUBECONFIG" get pv "$PV_NAME" -o jsonpath='{.status.phase}' 2>/dev/null || true)
+      if [ "$EXISTING_PV_PHASE" = "Released" ]; then
+        echo "Existing PV $PV_NAME is Released — deleting so it can be reprovisioned"
+        kubectl --kubeconfig "$KUBECONFIG" delete pv "$PV_NAME" --ignore-not-found || true
+        # small pause to ensure deletion observed by API
+        sleep 1
+      fi
+
       echo "Creating PV using hostPath: $HOST_VOL_DIR"
-      cat <<PVYAML | kubectl --kubeconfig "$KUBECONFIG" apply -f - || true
+      TMPPV=$(mktemp -p "$MODULE_DIR" pv-postgres-XXXXX.yaml)
+      cat > "$TMPPV" <<PVYAML
 apiVersion: v1
 kind: PersistentVolume
 metadata:
@@ -130,8 +170,11 @@ spec:
     path: "${HOST_VOL_DIR}"
     type: DirectoryOrCreate
 PVYAML
-      # create PVC that binds to the PV
-      cat <<PVCYAML | kubectl --kubeconfig "$KUBECONFIG" apply -f - || true
+      kubectl_apply_with_validate_fallback "$TMPPV" || true
+      rm -f "$TMPPV" || true
+      # create PVC that binds to the PV (write to temp file and apply with helper)
+      TMPPVC=$(mktemp -p "$MODULE_DIR" pvc-postgres-XXXXX.yaml)
+      cat > "$TMPPVC" <<PVCYAML
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
@@ -145,14 +188,17 @@ spec:
   storageClassName: manual
   volumeName: ${PV_NAME}
 PVCYAML
+      kubectl_apply_with_validate_fallback "$TMPPVC" || true
+      rm -f "$TMPPVC" || true
     else
       # fallback to existing k8s file if present
       if [ -f "$MODULE_DIR/k8s/postgres/postgres-hostpath-pv.yaml" ]; then
         echo "Applying k8s/postgres/postgres-hostpath-pv.yaml (fallback)"
-        kubectl --kubeconfig "$KUBECONFIG" apply -f "$MODULE_DIR/k8s/postgres/postgres-hostpath-pv.yaml" || true
+        kubectl_apply_with_validate_fallback "$MODULE_DIR/k8s/postgres/postgres-hostpath-pv.yaml" || true
         PV_NAME=$(awk '/^metadata:/ {md=1; next} md && /^[[:space:]]*name:/ {gsub(/^[[:space:]]*name:[[:space:]]*/,"", $0); print $0; exit}' "$MODULE_DIR/k8s/postgres/postgres-hostpath-pv.yaml" 2>/dev/null || true)
         if [ -n "$PV_NAME" ]; then
-          cat <<PVCYAML | kubectl --kubeconfig "$KUBECONFIG" apply -f - || true
+          TMPPVC=$(mktemp -p "$MODULE_DIR" pvc-postgres-XXXXX.yaml)
+          cat > "$TMPPVC" <<PVCYAML
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
@@ -166,10 +212,13 @@ spec:
   storageClassName: manual
   volumeName: ${PV_NAME}
 PVCYAML
+          kubectl_apply_with_validate_fallback "$TMPPVC" || true
+          rm -f "$TMPPVC" || true
         fi
       else
         echo "No hostPath volume directory $HOST_VOL_DIR and no k8s/postgres/postgres-hostpath-pv.yaml — falling back to storageClass provisioning"
-        cat <<PVCYAML | kubectl --kubeconfig "$KUBECONFIG" apply -f - || true
+        TMPPVC=$(mktemp -p "$MODULE_DIR" pvc-postgres-XXXXX.yaml)
+        cat > "$TMPPVC" <<PVCYAML
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
@@ -182,25 +231,29 @@ spec:
     requests:
       storage: ${STORAGE_SIZE}
 PVCYAML
+        kubectl_apply_with_validate_fallback "$TMPPVC" || true
+        rm -f "$TMPPVC" || true
       fi
     fi
   else
-     # default behavior: create PVC that uses storage class (e.g., local-path)
-     cat <<PVCYAML | kubectl --kubeconfig "$KUBECONFIG" apply -f - || true
- apiVersion: v1
- kind: PersistentVolumeClaim
- metadata:
-   name: ${PVC_NAME}
- spec:
-   accessModes:
-     - ReadWriteOnce
-   storageClassName: ${STORAGE_CLASS}
-   resources:
-     requests:
-       storage: ${STORAGE_SIZE}
- PVCYAML
-   fi
- fi
+    # default behavior: create PVC that uses storage class (e.g., local-path)
+    TMPPVC=$(mktemp -p "$MODULE_DIR" pvc-postgres-XXXXX.yaml)
+    cat > "$TMPPVC" <<PVCYAML
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: ${PVC_NAME}
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: ${STORAGE_CLASS}
+  resources:
+    requests:
+      storage: ${STORAGE_SIZE}
+PVCYAML
+    kubectl_apply_with_validate_fallback "$TMPPVC" || true
+    rm -f "$TMPPVC" || true
+  fi
 fi
 
 # Ensure PVC health: if PVC exists but is Pending and references a missing PV or wrong storageClass, delete it so local-path can re-provision.

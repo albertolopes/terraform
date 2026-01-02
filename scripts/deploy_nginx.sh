@@ -78,14 +78,14 @@ if docker image inspect "$FULL_IMAGE" >/dev/null 2>&1; then
   docker save -o "$TARFILE" "$FULL_IMAGE" || true
   if command -v k3d >/dev/null 2>&1; then
     echo "Trying k3d image import by image name first: $IMAGE"
-    if k3d image import -c mycluster "$IMAGE" >/dev/null 2>&1; then
+    if k3d_import_cmd "$IMAGE" >/dev/null 2>&1; then
       echo "k3d image import by name succeeded for $IMAGE"
       # prefer the FULL_IMAGE reference if present on the node
       DEPLOY_IMAGE="$FULL_IMAGE"
     else
       echo "k3d image import by name failed; falling back to tar import"
       echo "Importing $TARFILE into k3d cluster 'mycluster'"
-      if k3d image import -c mycluster "$TARFILE" >/dev/null 2>&1; then
+      if k3d_import_cmd "$TARFILE" >/dev/null 2>&1; then
         echo "tar import succeeded"
         DEPLOY_IMAGE="$FULL_IMAGE"
       else
@@ -96,7 +96,7 @@ if docker image inspect "$FULL_IMAGE" >/dev/null 2>&1; then
     # Prefer to get a matching REF from k3d directly (more portable than docker exec ctr)
     if command -v k3d >/dev/null 2>&1; then
       echo "Querying k3d image list for matching refs..."
-      K3D_REFS=$(k3d image list -c mycluster 2>/dev/null || true)
+      K3D_REFS=$(k3d_list 2>/dev/null || true)
       echo "$K3D_REFS" | sed -n '1,200p'
       # Try exact IMAGE first
       if echo "$K3D_REFS" | grep -q -F "$IMAGE"; then

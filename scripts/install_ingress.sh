@@ -19,21 +19,12 @@ CTRL_NAME="ingress-nginx/controller"
 CERT_NAME="ingress-nginx/kube-webhook-certgen"
 TARFILE="$MODULE_DIR/.ingress-images.tar"
 
-REGISTRIES=("registry.k8s.io" "k8s.gcr.io" "quay.io" "ghcr.io" "docker.io")
+# Only try common public registries, do not include Docker Hub or attempt docker login
+REGISTRIES=("registry.k8s.io" "k8s.gcr.io" "quay.io" "ghcr.io")
 CHOSEN_CTRL=""
 CHOSEN_CERT=""
 
-login_if_creds() {
-  if [ -n "${DOCKERHUB_USERNAME:-}" ] && [ -n "${DOCKERHUB_PASSWORD:-}" ]; then
-    echo "Logging into Docker Hub as $DOCKERHUB_USERNAME"
-    echo "$DOCKERHUB_PASSWORD" | docker login -u "$DOCKERHUB_USERNAME" --password-stdin >/dev/null 2>&1 || {
-      echo "Warning: docker login failed" >&2
-      return 1
-    }
-    return 0
-  fi
-  return 2
-}
+# NOTE: we intentionally do NOT perform docker login to Docker Hub here — images should be public or pre-pulled
 
 PLATFORM=${PLATFORM:-"linux/amd64"}
 
@@ -51,10 +42,6 @@ try_find_image() {
         echo "Pulled $img" >&2
         printf '%s' "$img"
         return 0
-      fi
-      # on first failure, try login if creds present
-      if [ $attempt -eq 1 ]; then
-        login_if_creds >/dev/null 2>&1 || true
       fi
       echo "pull failed for $img (attempt $attempt/$max_attempts), retrying in ${delay}s..." >&2
       sleep $delay
@@ -128,7 +115,7 @@ if [ -n "$CHOSEN_CTRL" ] || [ -n "$CHOSEN_CERT" ]; then
     PENDING_IMAGES=()
     for img in "${IMAGES_TO_SAVE[@]}"; do
       # check if image is present in k3d list
-      if command -v k3d >/dev/null 2>&1 && k3d image list -c mycluster | grep -F "$img" >/dev/null 2>&1; then
+      if command -v k3d >/dev/null 2>&1 && k3d_list | grep -F "$img" >/dev/null 2>&1; then
         echo "Image $img already present in k3d"
         continue
       fi
@@ -141,7 +128,7 @@ if [ -n "$CHOSEN_CTRL" ] || [ -n "$CHOSEN_CERT" ]; then
       if [ -f "$TARFILE" ]; then
         if command -v k3d >/dev/null 2>&1; then
           echo "Importing $TARFILE into k3d cluster 'mycluster'"
-          if k3d image import -c mycluster "$TARFILE" >/dev/null 2>&1; then
+          if k3d_import_cmd "$TARFILE" >/dev/null 2>&1; then
             echo "k3d tar import succeeded"
           else
             echo "k3d tar import failed; will try per-image tar import"
@@ -151,7 +138,7 @@ if [ -n "$CHOSEN_CTRL" ] || [ -n "$CHOSEN_CERT" ]; then
               docker save -o "$T" "$img" || true
               if [ -f "$T" ]; then
                 echo "Importing $T into k3d"
-                k3d_import "$T" || true
+                k3d_import_cmd "$T" || true
                 rm -f "$T" || true
               fi
             done
@@ -195,47 +182,30 @@ ensure_import_image() {
   local PLATFORM_LOCAL=${PLATFORM:-"linux/amd64"}
   echo "Ensuring image available in k3d: $image" >&2
 
-  # Try direct k3d import by name (let k3d pull if necessary)
+  # Delegate to robust wrapper which probes supported flags
   if command -v k3d >/dev/null 2>&1; then
-    # try variant: -c
-    if k3d image import -c mycluster "$image" >/dev/null 2>&1; then
+    if k3d_import_cmd "$image" >/dev/null 2>&1; then
       echo "k3d import by name succeeded for $image" >&2
     else
-      # try variant: positional cluster then image
-      if k3d image import mycluster "$image" >/dev/null 2>&1; then
-        echo "k3d import (positional cluster) succeeded for $image" >&2
-      else
-        # try variant: image only (k3d may pull/import)
-        if k3d image import "$image" >/dev/null 2>&1; then
-          echo "k3d import (image-only) succeeded for $image" >&2
-        else
-          echo "k3d import by name failed for $image; attempting docker pull+tar import" >&2
-          # try docker pull for specific platform
-          if docker pull --platform "$PLATFORM_LOCAL" "$image" >/dev/null 2>&1; then
-            echo "docker pull succeeded for $image" >&2
-            local tarfile="$MODULE_DIR/.tmp_import_$(echo "$image" | tr '/:' '__').tar"
-            docker save -o "$tarfile" "$image" || true
-            if [ -f "$tarfile" ]; then
-              # try different k3d import forms for tar
-              if k3d image import -c mycluster "$tarfile" >/dev/null 2>&1; then
-                echo "k3d tar import succeeded for $image" >&2
-                rm -f "$tarfile" || true
-              elif k3d image import mycluster "$tarfile" >/dev/null 2>&1; then
-                echo "k3d tar import (positional) succeeded for $image" >&2
-                rm -f "$tarfile" || true
-              elif k3d image import "$tarfile" >/dev/null 2>&1; then
-                echo "k3d tar import (file-only) succeeded for $image" >&2
-                rm -f "$tarfile" || true
-              else
-                echo "k3d tar import failed for $image; will attempt per-image tar fallback" >&2
-              fi
-            else
-              echo "docker save did not produce tar for $image" >&2
-            fi
+      echo "k3d import by name failed for $image; attempting docker pull+tar import" >&2
+      # try docker pull for specific platform
+      if docker pull --platform "$PLATFORM_LOCAL" "$image" >/dev/null 2>&1; then
+        echo "docker pull succeeded for $image" >&2
+        local tarfile
+        tarfile="$MODULE_DIR/.tmp_import_$(echo "$image" | tr '/:' '__').tar"
+        docker save -o "$tarfile" "$image" || true
+        if [ -f "$tarfile" ]; then
+          if k3d_import_cmd "$tarfile" >/dev/null 2>&1; then
+            echo "k3d tar import succeeded for $image" >&2
+            rm -f "$tarfile" || true
           else
-            echo "docker pull failed for $image (network/registry issue?)" >&2
+            echo "k3d tar import failed for $image; will attempt per-image tar fallback" >&2
           fi
+        else
+          echo "docker save did not produce tar for $image" >&2
         fi
+      else
+        echo "docker pull failed for $image (network/registry issue?)" >&2
       fi
     fi
   else
@@ -245,7 +215,7 @@ ensure_import_image() {
   # Return a REF present in k3d (try exact image, full image list name, or digest)
   if command -v k3d >/dev/null 2>&1; then
     local refs
-    refs=$(k3d image list -c mycluster 2>/dev/null || k3d image list 2>/dev/null || true)
+    refs=$(k3d_list 2>/dev/null || true)
     # prefer exact match
     if echo "$refs" | grep -q -F "$image"; then
       echo "$(echo "$refs" | grep -F "$image" | head -n1 | awk '{print $1}')"
@@ -291,13 +261,13 @@ fi
 # If we have chosen REF values, replace occurrences in the manifest safely
 if [ -n "$CHOSEN_CTRL_REF" ]; then
   ESC_CTRL=$(escape_sed_repl "$CHOSEN_CTRL_REF")
-  sed -i "s#\(registry.k8s.io\|k8s.gcr.io\|quay.io\|ghcr.io\|docker.io\)/$CTRL_NAME:[^[:space:]][^[:space:]]*#${ESC_CTRL}#g" /tmp/ingress-nginx-cloud.yaml || true
-  sed -i "s#\(registry.k8s.io\|k8s.gcr.io\|quay.io\|ghcr.io\|docker.io\)/$CTRL_NAME@sha256:[^[:space:]][^[:space:]]*#${ESC_CTRL}#g" /tmp/ingress-nginx-cloud.yaml || true
+  sed -i "s#\(registry.k8s.io\|k8s.gcr.io\|quay.io\|ghcr.io\)/$CTRL_NAME:[^[:space:]][^[:space:]]*#${ESC_CTRL}#g" /tmp/ingress-nginx-cloud.yaml || true
+  sed -i "s#\(registry.k8s.io\|k8s.gcr.io\|quay.io\|ghcr.io\)/$CTRL_NAME@sha256:[^[:space:]][^[:space:]]*#${ESC_CTRL}#g" /tmp/ingress-nginx-cloud.yaml || true
 fi
 if [ -n "$CHOSEN_CERT_REF" ]; then
   ESC_CERT=$(escape_sed_repl "$CHOSEN_CERT_REF")
-  sed -i "s#\(registry.k8s.io\|k8s.gcr.io\|quay.io\|ghcr.io\|docker.io\)/$CERT_NAME:[^[:space:]][^[:space:]]*#${ESC_CERT}#g" /tmp/ingress-nginx-cloud.yaml || true
-  sed -i "s#\(registry.k8s.io\|k8s.gcr.io\|quay.io\|ghcr.io\|docker.io\)/$CERT_NAME@sha256:[^[:space:]][^[:space:]]*#${ESC_CERT}#g" /tmp/ingress-nginx-cloud.yaml || true
+  sed -i "s#\(registry.k8s.io\|k8s.gcr.io\|quay.io\|ghcr.io\)/$CERT_NAME:[^[:space:]][^[:space:]]*#${ESC_CERT}#g" /tmp/ingress-nginx-cloud.yaml || true
+  sed -i "s#\(registry.k8s.io\|k8s.gcr.io\|quay.io\|ghcr.io\)/$CERT_NAME@sha256:[^[:space:]][^[:space:]]*#${ESC_CERT}#g" /tmp/ingress-nginx-cloud.yaml || true
 fi
 
 # apply manifest
@@ -317,12 +287,12 @@ dump_diagnostics() {
   kubectl --kubeconfig "$KUBECONFIG" -n ingress-nginx describe deployment ingress-nginx-controller >> "$out" 2>&1 || true
   echo "--- kubectl -n ingress-nginx describe pods (all) ---" >> "$out"
   kubectl --kubeconfig "$KUBECONFIG" -n ingress-nginx describe pods >> "$out" 2>&1 || true
-  echo "--- kubectl -n ingress-nginx logs (by label) ---" >> "$out"
+  echo "--- kubectl -n ingress-nginx logs -by label) ---" >> "$out"
   kubectl --kubeconfig "$KUBECONFIG" -n ingress-nginx logs -l app.kubernetes.io/name=ingress-nginx --tail=500 >> "$out" 2>&1 || true
   echo "--- kubectl -n ingress-nginx events ---" >> "$out"
   kubectl --kubeconfig "$KUBECONFIG" -n ingress-nginx get events --sort-by=.metadata.creationTimestamp | tail -n 200 >> "$out" 2>&1 || true
   echo "--- k3d image list -c mycluster (fallback plain) ---" >> "$out"
-  (k3d image list -c mycluster 2>&1 || k3d image list 2>&1) >> "$out" 2>&1 || true
+  (k3d_list 2>&1 || k3d image list 2>&1) >> "$out" 2>&1 || true
   echo "--- docker ps (k3d containers) ---" >> "$out"
   docker ps --format '{{.Names}} {{.Ports}}' | grep k3d >> "$out" 2>&1 || true
   echo "Diagnostics written to $out"
