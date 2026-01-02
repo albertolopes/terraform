@@ -13,15 +13,14 @@ if ! command -v k3d >/dev/null 2>&1; then
 fi
 
 if ! k3d cluster list | grep -q "^mycluster\b"; then
-  echo "Creating k3d cluster 'mycluster' with port mapping 80:80@loadbalancer, 443:443@loadbalancer, 30080:30080@loadbalancer"
-  k3d cluster create mycluster --wait --k3s-arg "--disable=traefik@server:0" --port "80:80@loadbalancer" --port "443:443@loadbalancer" --port "30080:30080@loadbalancer"
+  echo "Creating k3d cluster 'mycluster' with port mapping 80:80@loadbalancer, 443:443@loadbalancer, 30080:30080@loadbalancer, 5432:5432@loadbalancer"
+  k3d cluster create mycluster --wait --k3s-arg "--disable=traefik@server:0" --port "80:80@loadbalancer" --port "443:443@loadbalancer" --port "30080:30080@loadbalancer" --port "5432:5432@loadbalancer"
 else
   echo "Cluster 'mycluster' exists — recreating to ensure correct port mappings and Traefik disabled"
   k3d cluster delete mycluster || true
-  k3d cluster create mycluster --wait --k3s-arg "--disable=traefik@server:0" --port "80:80@loadbalancer" --port "443:443@loadbalancer" --port "30080:30080@loadbalancer"
+  k3d cluster create mycluster --wait --k3s-arg "--disable=traefik@server:0" --port "80:80@loadbalancer" --port "443:443@loadbalancer" --port "30080:30080@loadbalancer" --port "5432:5432@loadbalancer"
 fi
 
 # export kubeconfig for this cluster to module path so other steps can read it
 k3d kubeconfig get mycluster > "$MODULE_DIR/.k3d_kubeconfig"
 chmod 600 "$MODULE_DIR/.k3d_kubeconfig"
-

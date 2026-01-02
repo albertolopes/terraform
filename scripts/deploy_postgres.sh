@@ -188,11 +188,12 @@ metadata:
 spec:
   selector:
     app: postgres
-  type: NodePort
+  type: LoadBalancer
   ports:
   - name: postgresql
     port: 5432
     targetPort: 5432
+    # nodePort is optional; keep as hint for k3d if needed
     nodePort: ${NODE_PORT}
 YAML
 
