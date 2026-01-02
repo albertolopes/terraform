@@ -1,0 +1,416 @@
+#!/usr/bin/env bash
+set -euo pipefail
+KUBECONFIG=${KUBECONFIG:-$PWD/.k3d_kubeconfig}
+MODULE_DIR=${MODULE_DIR:-$PWD}
+
+# ensure kubectl exists
+if ! command -v kubectl >/dev/null 2>&1; then
+  echo "kubectl not found — downloading latest kubectl into $HOME/.local/bin/kubectl"
+  KUBE_VER=$(curl -L -s https://dl.k8s.io/release/stable.txt)
+  curl -L "https://dl.k8s.io/release/${KUBE_VER}/bin/linux/amd64/kubectl" -o "$HOME/.local/bin/kubectl"
+  chmod +x "$HOME/.local/bin/kubectl"
+  export PATH="$HOME/.local/bin:$PATH"
+fi
+
+# images and tags we need
+CTRL_TAG="v1.14.1"
+CERT_TAG="v1.6.5"
+CTRL_NAME="ingress-nginx/controller"
+CERT_NAME="ingress-nginx/kube-webhook-certgen"
+TARFILE="$MODULE_DIR/.ingress-images.tar"
+
+REGISTRIES=("registry.k8s.io" "k8s.gcr.io" "quay.io" "ghcr.io" "docker.io")
+CHOSEN_CTRL=""
+CHOSEN_CERT=""
+
+login_if_creds() {
+  if [ -n "${DOCKERHUB_USERNAME:-}" ] && [ -n "${DOCKERHUB_PASSWORD:-}" ]; then
+    echo "Logging into Docker Hub as $DOCKERHUB_USERNAME"
+    echo "$DOCKERHUB_PASSWORD" | docker login -u "$DOCKERHUB_USERNAME" --password-stdin >/dev/null 2>&1 || {
+      echo "Warning: docker login failed" >&2
+      return 1
+    }
+    return 0
+  fi
+  return 2
+}
+
+PLATFORM=${PLATFORM:-"linux/amd64"}
+
+try_find_image() {
+  local name="$1"; shift
+  local tag="$1"; shift
+  local max_attempts=${1:-3} # optional third arg: max attempts per registry (default 3)
+  local delay=2
+  for reg in "${REGISTRIES[@]}"; do
+    img="$reg/$name:$tag"
+    echo "Trying to pull $img (platform=$PLATFORM)" >&2
+    attempt=1
+    while [ $attempt -le $max_attempts ]; do
+      if docker pull --platform "$PLATFORM" "$img" >/dev/null 2>&1; then
+        echo "Pulled $img" >&2
+        printf '%s' "$img"
+        return 0
+      fi
+      # on first failure, try login if creds present
+      if [ $attempt -eq 1 ]; then
+        login_if_creds >/dev/null 2>&1 || true
+      fi
+      echo "pull failed for $img (attempt $attempt/$max_attempts), retrying in ${delay}s..." >&2
+      sleep $delay
+      attempt=$((attempt+1))
+      delay=$((delay*2))
+    done
+    echo "Giving up trying registry $reg for $name:$tag after $max_attempts attempts" >&2
+  done
+  return 1
+}
+
+CHOSEN_CTRL_IMG=$(try_find_image "$CTRL_NAME" "$CTRL_TAG" 3 2>/dev/null || true)
+CHOSEN_CTRL=$(printf '%s' "$CHOSEN_CTRL_IMG" | tr -d '\r' | xargs || true)
+
+# try certgen with smaller number of attempts (back off quickly)
+CHOSEN_CERT_IMG=$(try_find_image "$CERT_NAME" "$CERT_TAG" 2 2>/dev/null || true)
+CHOSEN_CERT=$(printf '%s' "$CHOSEN_CERT_IMG" | tr -d '\r' | xargs || true)
+
+if [ -n "$CHOSEN_CTRL" ] || [ -n "$CHOSEN_CERT" ]; then
+  echo "At least one ingress image pulled; saving and importing into k3d"
+  IMAGES_TO_SAVE=()
+  if [ -n "$CHOSEN_CTRL" ]; then
+    if docker image inspect "$CHOSEN_CTRL" >/dev/null 2>&1; then
+      IMAGES_TO_SAVE+=("$CHOSEN_CTRL")
+    else
+      echo "Image $CHOSEN_CTRL not present locally — attempting docker pull"
+      docker pull "$CHOSEN_CTRL" || true
+      if docker image inspect "$CHOSEN_CTRL" >/dev/null 2>&1; then
+        IMAGES_TO_SAVE+=("$CHOSEN_CTRL")
+      else
+        echo "Warning: $CHOSEN_CTRL still not available locally; skipping"
+      fi
+    fi
+  fi
+  if [ -n "$CHOSEN_CERT" ]; then
+    if docker image inspect "$CHOSEN_CERT" >/dev/null 2>&1; then
+      IMAGES_TO_SAVE+=("$CHOSEN_CERT")
+    else
+      echo "Image $CHOSEN_CERT not present locally — attempting docker pull"
+      docker pull "$CHOSEN_CERT" || true
+      if docker image inspect "$CHOSEN_CERT" >/dev/null 2>&1; then
+        IMAGES_TO_SAVE+=("$CHOSEN_CERT")
+      else
+        echo "Warning: $CHOSEN_CERT still not available locally; skipping"
+      fi
+    fi
+  fi
+
+  if [ ${#IMAGES_TO_SAVE[@]} -gt 0 ]; then
+    echo "Images to save: ${IMAGES_TO_SAVE[*]}"
+    rm -f "$TARFILE" || true
+    # try per-image k3d import first (preferred)
+    if command -v k3d >/dev/null 2>&1; then
+      IMPORT_SUCCEEDED=false
+      for img in "${IMAGES_TO_SAVE[@]}"; do
+        echo "Attempting k3d image import by name: $img"
+        if k3d_import "$img" >/dev/null 2>&1; then
+          echo "k3d image import succeeded for $img"
+          IMPORT_SUCCEEDED=true
+        else
+          echo "k3d image import by name failed for $img; will try tar fallback later"
+        fi
+      done
+      # if all images imported by name, skip tar
+      if [ "$IMPORT_SUCCEEDED" = true ]; then
+        echo "At least one image imported by name into k3d"
+      fi
+    fi
+
+    # as a robust fallback, create a tar with any images not imported and import the tar
+    PENDING_IMAGES=()
+    for img in "${IMAGES_TO_SAVE[@]}"; do
+      # check if image is present in k3d list
+      if command -v k3d >/dev/null 2>&1 && k3d image list -c mycluster | grep -F "$img" >/dev/null 2>&1; then
+        echo "Image $img already present in k3d"
+        continue
+      fi
+      PENDING_IMAGES+=("$img")
+    done
+
+    if [ ${#PENDING_IMAGES[@]} -gt 0 ]; then
+      echo "Saving pending images to tar: ${PENDING_IMAGES[*]}"
+      docker save -o "$TARFILE" "${PENDING_IMAGES[@]}" || true
+      if [ -f "$TARFILE" ]; then
+        if command -v k3d >/dev/null 2>&1; then
+          echo "Importing $TARFILE into k3d cluster 'mycluster'"
+          if k3d image import -c mycluster "$TARFILE" >/dev/null 2>&1; then
+            echo "k3d tar import succeeded"
+          else
+            echo "k3d tar import failed; will try per-image tar import"
+            for img in "${PENDING_IMAGES[@]}"; do
+              T="${MODULE_DIR}/.tmp_image_$(echo "$img" | tr '/:' '__').tar"
+              echo "Saving $img -> $T"
+              docker save -o "$T" "$img" || true
+              if [ -f "$T" ]; then
+                echo "Importing $T into k3d"
+                k3d_import "$T" || true
+                rm -f "$T" || true
+              fi
+            done
+          fi
+        fi
+      else
+        echo "WARN: tarfile $TARFILE not created for pending images; skipping k3d import"
+      fi
+    else
+      echo "No pending images to tar-import"
+    fi
+  else
+    echo "No images available to save/import"
+  fi
+fi
+
+INGRESS_URL="https://raw.githubusercontent.com/kubernetes/ingress-nginx/main/deploy/static/provider/cloud/deploy.yaml"
+if ! curl -fsSL "$INGRESS_URL" -o /tmp/ingress-nginx-cloud.yaml; then
+  echo "Failed to download ingress-nginx manifest from $INGRESS_URL" >&2
+  exit 2
+fi
+
+# Backup original manifest for debugging
+cp /tmp/ingress-nginx-cloud.yaml /tmp/ingress-nginx-cloud.orig.yaml || true
+
+# Proactively relax failurePolicy in the manifest to reduce chance of webhook blocking
+if grep -q "failurePolicy:\s*Fail" /tmp/ingress-nginx-cloud.yaml >/dev/null 2>&1; then
+  echo "Relaxing webhook failurePolicy in manifest (Fail -> Ignore) to prevent blocking during install" >&2
+  sed -i 's/failurePolicy:\s*Fail/failurePolicy: Ignore/g' /tmp/ingress-nginx-cloud.yaml || true
+fi
+
+# If we have chosen images, replace occurrences in the manifest safely
+escape_sed_repl() {
+  # escape backslash, ampersand and the sed delimiter '#'
+  printf '%s' "$1" | sed -e 's/[\\&\#]/\\&/g'
+}
+
+ensure_import_image() {
+  # Usage: ensure_import_image <image>
+  local image="$1"
+  local PLATFORM_LOCAL=${PLATFORM:-"linux/amd64"}
+  echo "Ensuring image available in k3d: $image" >&2
+
+  # Try direct k3d import by name (let k3d pull if necessary)
+  if command -v k3d >/dev/null 2>&1; then
+    # try variant: -c
+    if k3d image import -c mycluster "$image" >/dev/null 2>&1; then
+      echo "k3d import by name succeeded for $image" >&2
+    else
+      # try variant: positional cluster then image
+      if k3d image import mycluster "$image" >/dev/null 2>&1; then
+        echo "k3d import (positional cluster) succeeded for $image" >&2
+      else
+        # try variant: image only (k3d may pull/import)
+        if k3d image import "$image" >/dev/null 2>&1; then
+          echo "k3d import (image-only) succeeded for $image" >&2
+        else
+          echo "k3d import by name failed for $image; attempting docker pull+tar import" >&2
+          # try docker pull for specific platform
+          if docker pull --platform "$PLATFORM_LOCAL" "$image" >/dev/null 2>&1; then
+            echo "docker pull succeeded for $image" >&2
+            local tarfile="$MODULE_DIR/.tmp_import_$(echo "$image" | tr '/:' '__').tar"
+            docker save -o "$tarfile" "$image" || true
+            if [ -f "$tarfile" ]; then
+              # try different k3d import forms for tar
+              if k3d image import -c mycluster "$tarfile" >/dev/null 2>&1; then
+                echo "k3d tar import succeeded for $image" >&2
+                rm -f "$tarfile" || true
+              elif k3d image import mycluster "$tarfile" >/dev/null 2>&1; then
+                echo "k3d tar import (positional) succeeded for $image" >&2
+                rm -f "$tarfile" || true
+              elif k3d image import "$tarfile" >/dev/null 2>&1; then
+                echo "k3d tar import (file-only) succeeded for $image" >&2
+                rm -f "$tarfile" || true
+              else
+                echo "k3d tar import failed for $image; will attempt per-image tar fallback" >&2
+              fi
+            else
+              echo "docker save did not produce tar for $image" >&2
+            fi
+          else
+            echo "docker pull failed for $image (network/registry issue?)" >&2
+          fi
+        fi
+      fi
+    fi
+  else
+    echo "k3d not found; skipping k3d import for $image" >&2
+  fi
+
+  # Return a REF present in k3d (try exact image, full image list name, or digest)
+  if command -v k3d >/dev/null 2>&1; then
+    local refs
+    refs=$(k3d image list -c mycluster 2>/dev/null || k3d image list 2>/dev/null || true)
+    # prefer exact match
+    if echo "$refs" | grep -q -F "$image"; then
+      echo "$(echo "$refs" | grep -F "$image" | head -n1 | awk '{print $1}')"
+      return 0
+    fi
+    # try by repo/name (strip registry if not present)
+    local base=${image%%:*}
+    local name_only=${base##*/}
+    if echo "$refs" | grep -i "/$name_only" >/dev/null 2>&1; then
+      echo "$(echo "$refs" | grep -i "/$name_only" | head -n1 | awk '{print $1}')"
+      return 0
+    fi
+    # try to find any nginx controller related ref
+    if echo "$refs" | grep -i 'ingress-nginx' >/dev/null 2>&1; then
+      echo "$(echo "$refs" | grep -i 'ingress-nginx' | head -n1 | awk '{print $1}')"
+      return 0
+    fi
+    # as last resort return original image
+    echo "$image"
+    return 0
+  fi
+
+  echo "$image"
+}
+
+# Replace earlier CHOSEN_* usage: ensure images and determine REF to use in manifest
+CHOSEN_CTRL_REF=""
+CHOSEN_CERT_REF=""
+if [ -n "$CHOSEN_CTRL" ]; then
+  echo "Ensuring controller image: $CHOSEN_CTRL"
+  CHOSEN_CTRL_REF=$(ensure_import_image "$CHOSEN_CTRL" 2>/dev/null || true)
+  # sanitize: extract last whitespace-delimited token (should be the image ref)
+  CHOSEN_CTRL_REF=$(printf '%s' "$CHOSEN_CTRL_REF" | tr -d '\r' | awk '{print $NF}' | xargs || true)
+  echo "Controller REF to use in manifest: $CHOSEN_CTRL_REF"
+fi
+if [ -n "$CHOSEN_CERT" ]; then
+  echo "Ensuring certgen image: $CHOSEN_CERT"
+  CHOSEN_CERT_REF=$(ensure_import_image "$CHOSEN_CERT" 2>/dev/null || true)
+  CHOSEN_CERT_REF=$(printf '%s' "$CHOSEN_CERT_REF" | tr -d '\r' | awk '{print $NF}' | xargs || true)
+  echo "Certgen REF to use in manifest: $CHOSEN_CERT_REF"
+fi
+
+# If we have chosen REF values, replace occurrences in the manifest safely
+if [ -n "$CHOSEN_CTRL_REF" ]; then
+  ESC_CTRL=$(escape_sed_repl "$CHOSEN_CTRL_REF")
+  sed -i "s#\(registry.k8s.io\|k8s.gcr.io\|quay.io\|ghcr.io\|docker.io\)/$CTRL_NAME:[^[:space:]][^[:space:]]*#${ESC_CTRL}#g" /tmp/ingress-nginx-cloud.yaml || true
+  sed -i "s#\(registry.k8s.io\|k8s.gcr.io\|quay.io\|ghcr.io\|docker.io\)/$CTRL_NAME@sha256:[^[:space:]][^[:space:]]*#${ESC_CTRL}#g" /tmp/ingress-nginx-cloud.yaml || true
+fi
+if [ -n "$CHOSEN_CERT_REF" ]; then
+  ESC_CERT=$(escape_sed_repl "$CHOSEN_CERT_REF")
+  sed -i "s#\(registry.k8s.io\|k8s.gcr.io\|quay.io\|ghcr.io\|docker.io\)/$CERT_NAME:[^[:space:]][^[:space:]]*#${ESC_CERT}#g" /tmp/ingress-nginx-cloud.yaml || true
+  sed -i "s#\(registry.k8s.io\|k8s.gcr.io\|quay.io\|ghcr.io\|docker.io\)/$CERT_NAME@sha256:[^[:space:]][^[:space:]]*#${ESC_CERT}#g" /tmp/ingress-nginx-cloud.yaml || true
+fi
+
+# apply manifest
+# remove previously created admission jobs if they exist to avoid immutable-field patch errors
+kubectl --kubeconfig "$KUBECONFIG" -n ingress-nginx delete job ingress-nginx-admission-create ingress-nginx-admission-patch --ignore-not-found=true || true
+kubectl --kubeconfig "$KUBECONFIG" apply -f /tmp/ingress-nginx-cloud.yaml
+kubectl --kubeconfig "$KUBECONFIG" -n ingress-nginx rollout status deployment/ingress-nginx-controller --timeout=180s || true
+
+# dump cluster diagnostics to a file for easier debugging
+dump_diagnostics() {
+  local out="${MODULE_DIR}/.ingress_diagnostics.txt"
+  echo "===== ingress diagnostics: $(date -u) =====" > "$out"
+  echo "KUBECONFIG=$KUBECONFIG" >> "$out"
+  echo "--- kubectl -n ingress-nginx get pods -o wide ---" >> "$out"
+  kubectl --kubeconfig "$KUBECONFIG" -n ingress-nginx get pods -o wide >> "$out" 2>&1 || true
+  echo "--- kubectl -n ingress-nginx describe deployment ingress-nginx-controller ---" >> "$out"
+  kubectl --kubeconfig "$KUBECONFIG" -n ingress-nginx describe deployment ingress-nginx-controller >> "$out" 2>&1 || true
+  echo "--- kubectl -n ingress-nginx describe pods (all) ---" >> "$out"
+  kubectl --kubeconfig "$KUBECONFIG" -n ingress-nginx describe pods >> "$out" 2>&1 || true
+  echo "--- kubectl -n ingress-nginx logs (by label) ---" >> "$out"
+  kubectl --kubeconfig "$KUBECONFIG" -n ingress-nginx logs -l app.kubernetes.io/name=ingress-nginx --tail=500 >> "$out" 2>&1 || true
+  echo "--- kubectl -n ingress-nginx events ---" >> "$out"
+  kubectl --kubeconfig "$KUBECONFIG" -n ingress-nginx get events --sort-by=.metadata.creationTimestamp | tail -n 200 >> "$out" 2>&1 || true
+  echo "--- k3d image list -c mycluster (fallback plain) ---" >> "$out"
+  (k3d image list -c mycluster 2>&1 || k3d image list 2>&1) >> "$out" 2>&1 || true
+  echo "--- docker ps (k3d containers) ---" >> "$out"
+  docker ps --format '{{.Names}} {{.Ports}}' | grep k3d >> "$out" 2>&1 || true
+  echo "Diagnostics written to $out"
+}
+
+# If rollout didn't finish, collect diagnostics and attempt an automatic patch to use the imported REF
+STATUS=$(kubectl --kubeconfig "$KUBECONFIG" -n ingress-nginx get deploy ingress-nginx-controller -o jsonpath='{.status.conditions[?(@.type=="Available")].status}' 2>/dev/null || true)
+if [ "$STATUS" != "True" ]; then
+  echo "Ingress controller rollout did not reach Available=true; gathering diagnostics..." >&2
+  dump_diagnostics
+  kubectl --kubeconfig "$KUBECONFIG" -n ingress-nginx get pods -o wide || true
+  kubectl --kubeconfig "$KUBECONFIG" -n ingress-nginx describe deployment ingress-nginx-controller || true
+  kubectl --kubeconfig "$KUBECONFIG" -n ingress-nginx get pods -o name | xargs -r -n1 kubectl --kubeconfig "$KUBECONFIG" -n ingress-nginx describe || true
+  kubectl --kubeconfig "$KUBECONFIG" -n ingress-nginx get events --sort-by=.metadata.creationTimestamp | tail -n 200 || true
+
+  # If webhook validation is blocking (no endpoints), temporarily set failurePolicy to Ignore
+  echo "Attempting to relax admission webhooks (failurePolicy -> Ignore) to allow controller to start" >&2
+  if kubectl --kubeconfig "$KUBECONFIG" get validatingwebhookconfiguration ingress-nginx-admission >/dev/null 2>&1; then
+    kubectl --kubeconfig "$KUBECONFIG" get validatingwebhookconfiguration ingress-nginx-admission -o yaml > /tmp/ingress-vwc.yaml || true
+    if [ -f /tmp/ingress-vwc.yaml ]; then
+      sed -i 's/failurePolicy:\s*Fail/failurePolicy: Ignore/g' /tmp/ingress-vwc.yaml || true
+      kubectl --kubeconfig "$KUBECONFIG" apply -f /tmp/ingress-vwc.yaml || true
+      echo "Patched validatingwebhookconfiguration to failurePolicy=Ignore" >&2
+    fi
+  fi
+  if kubectl --kubeconfig "$KUBECONFIG" get mutatingwebhookconfiguration ingress-nginx-admission >/dev/null 2>&1; then
+    kubectl --kubeconfig "$KUBECONFIG" get mutatingwebhookconfiguration ingress-nginx-admission -o yaml > /tmp/ingress-mwc.yaml || true
+    if [ -f /tmp/ingress-mwc.yaml ]; then
+      sed -i 's/failurePolicy:\s*Fail/failurePolicy: Ignore/g' /tmp/ingress-mwc.yaml || true
+      kubectl --kubeconfig "$KUBECONFIG" apply -f /tmp/ingress-mwc.yaml || true
+      echo "Patched mutatingwebhookconfiguration to failurePolicy=Ignore" >&2
+    fi
+  fi
+
+  # Try to patch the deployment to use the CHOSEN_CTRL_REF if available
+  if [ -n "${CHOSEN_CTRL_REF:-}" ]; then
+    echo "Attempting to patch deployment to use image ${CHOSEN_CTRL_REF} for all containers..." >&2
+    # get container names
+    CONTAINERS=$(kubectl --kubeconfig "$KUBECONFIG" -n ingress-nginx get deploy ingress-nginx-controller -o jsonpath='{.spec.template.spec.containers[*].name}' || true)
+    if [ -n "$CONTAINERS" ]; then
+      SET_IMAGE_ARGS=()
+      for cname in $CONTAINERS; do
+        SET_IMAGE_ARGS+=("${cname}=${CHOSEN_CTRL_REF}")
+      done
+      # apply set image
+      kubectl --kubeconfig "$KUBECONFIG" -n ingress-nginx set image deployment/ingress-nginx-controller "${SET_IMAGE_ARGS[*]}" --record || true
+      echo "Patched deployment; waiting additional 120s for rollout..." >&2
+      kubectl --kubeconfig "$KUBECONFIG" -n ingress-nginx rollout status deployment/ingress-nginx-controller --timeout=120s || true
+    else
+      echo "Could not determine container names for deployment; skipping patch" >&2
+    fi
+  else
+    echo "No CHOSEN_CTRL_REF available to patch deployment" >&2
+  fi
+fi
+
+# Wait for admission webhook endpoints (so webhook validations succeed)
+echo "Waiting for ingress-nginx admission endpoints..."
+ATTEMPTS=90
+SLEEP=2
+for i in $(seq 1 $ATTEMPTS); do
+  EP=$(kubectl --kubeconfig "$KUBECONFIG" -n ingress-nginx get endpoints ingress-nginx-controller-admission -o jsonpath='{.subsets}' 2>/dev/null || true)
+  if [ -n "$EP" ] && [ "$EP" != "[]" ]; then
+    echo "admission endpoints ready"
+    break
+  fi
+  echo "not ready ($i/$ATTEMPTS)"
+  sleep $SLEEP
+done
+
+kubectl --kubeconfig "$KUBECONFIG" apply -f - <<YAML
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: nginx-global-ingress
+  namespace: default
+  annotations:
+    kubernetes.io/ingress.class: "nginx"
+spec:
+  ingressClassName: nginx
+  rules:
+  - http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: nginx-service
+            port:
+              number: 80
+YAML

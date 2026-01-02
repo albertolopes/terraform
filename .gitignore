@@ -1,56 +1,85 @@
 # Terraform
 .terraform/
+terraform.tfstate
+terraform.tfstate.backup
 *.tfstate
 *.tfstate.*
+.terraform.lock.hcl
+.tfplan
+*.tfplan
+
+# Terraform variable files (may contain secrets)
+*.tfvars
+*.tfvars.json
+
+# Terraform crash logs
 crash.log
+
+# Terraform overrides
 override.tf
 override.tf.json
 *_override.tf
-.terraform.lock.hcl
-.terraform.tfvars
-.terraform.tfvars.json
-terraform.tfvars
-terraform.tfvars.json
-.terraform.tfstate.backup
 
-# Sensitive data
-*.pem
-*.key
-*.crt
-*.env
-.vault-token
-
-# k3d / k3s / kubeconfig
-.k3d_created
-kubeconfig
-kubeconfig.*
+# k3d / kube (local kubeconfig, port-forward pids)
+.k3d_kubeconfig
+.k3d_port_forward.pid
+.k3d_*
 .kube/
-.kube/*
-.kubeconfig
-*.kubeconfig
+.kube/config
+
+# Image tarballs / imports
+.ingress-images.tar
+.nginx_image.tar
+*.tar
 
 # Docker
 docker-compose.override.yml
 docker-compose.*.yml
-Dockerfile.*
+docker-compose.*.yaml
+*.log
 
 # Logs
 *.log
+*.log.*
+run_deploy.log
+terraform_apply.log
+terraform_deploy_target.log
 
-# IDEs and editors
-.vscode/
-.idea/
-*.iml
+# SSL / certs / keys (sensitive)
+certs/
+ssl/
+*.crt
+*.key
+*.pem
 
-# OS files
+# Editor / OS files
 .DS_Store
 Thumbs.db
-
-# Misc
-*.bak
-*.tmp
+.idea/
+.vscode/
+*.swp
 *~
 
-# Ignore local Terraform crash files
-crash.log
+# Backup / temp files
+*.bak
+*.tmp
+*.orig
 
+# Language runtime / package manager
+node_modules/
+npm-debug.log
+yarn-error.log
+__pycache__/
+*.pyc
+
+# Misc
+.env
+.env.*
+.history
+
+# Ignore any generated credentials or secrets files
+*.secret
+secrets.yml
+
+# Allow explicit inclusion via negate patterns as needed
+# !/path/to/keep

@@ -10,3 +10,8 @@ variable "container_name" {
   default     = "tutorial"
 }
 
+variable "nginx_image" {
+  type        = string
+  description = "Docker image for nginx deployment (can override via -var or terraform.tfvars)"
+  default     = "nginx:1.29.4-alpine"
+}

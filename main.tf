@@ -1,26 +1,9 @@
-terraform {
-  required_providers {
-    docker = {
-      source  = "kreuzwerker/docker"
-      version = ">= 3.0.2"
-    }
-  }
-}
+// main.tf is the central entry point. Resources and configuration are split across:
+// - providers.tf
+// - k3d.tf
+// - deploy_nginx.tf
+// - ingress.tf
+// - port_forward.tf
+// - outputs.tf
 
-provider "docker" {}
-
-resource "docker_image" "nginx" {
-  name         = "nginx:latest"
-  keep_locally = false
-}
-
-resource "docker_container" "nginx" {
-  image = docker_image.nginx.image_id
-  name  = var.container_name
-  ports {
-    internal = 80
-    external = 8080
-  }
-}
-
-
+// Keep this file small on purpose.
