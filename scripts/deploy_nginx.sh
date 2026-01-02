@@ -285,7 +285,7 @@ cat <<YAML | kubectl --kubeconfig "$KUBECONFIG" apply -f -
 apiVersion: v1
 kind: Service
 metadata:
-  name: nginx-service
+  name: nginx
 spec:
   selector:
     app: nginx
@@ -296,7 +296,7 @@ ${SERVICE_PORTS}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: nginx-deployment
+  name: nginx
 spec:
   replicas: 2
   selector:
@@ -363,7 +363,7 @@ ATT=0
 MAX=60
 echo "Waiting for nginx deployment to have ready replicas (timeout $((MAX*2))s)..."
 while [ $ATT -lt $MAX ]; do
-  READY=$(kubectl --kubeconfig "$KUBECONFIG" -n default get deploy nginx-deployment -o jsonpath='{.status.readyReplicas}' 2>/dev/null || echo 0)
+  READY=$(kubectl --kubeconfig "$KUBECONFIG" -n default get deploy nginx -o jsonpath='{.status.readyReplicas}' 2>/dev/null || echo 0)
   READY=${READY:-0}
   if [ "$READY" -ge 1 ]; then
     echo "nginx deployment ready"
