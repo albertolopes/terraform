@@ -107,16 +107,18 @@ if [ "$PVC_BOUND" = "false" ]; then
   # If HOST_PATH was detected, create a PV for it and set volumeName in PVC
   PV_NAME=""
   if [ -n "$HOST_PATH" ]; then
-    # normalize path
-    HOST_PATH_UNESCAPED="$HOST_PATH"
-    PV_NAME="pv-postgres-$(echo "$HOST_PATH_UNESCAPED" | md5sum | cut -d' ' -f1)"
-    echo "Detected hostPath for postgres data: $HOST_PATH_UNESCAPED -> PV_NAME=$PV_NAME"
-    # create PV (idempotent)
-    cat <<PVYAML | kubectl --kubeconfig "$KUBECONFIG" apply -f - || true
+    # prefer dynamic creation from repo-relative volume folder
+    HOST_VOL_DIR="$MODULE_DIR/volume/postgres"
+    PV_NAME="pv-postgres-hostpath"
+    if [ -d "$HOST_VOL_DIR" ]; then
+      echo "Creating PV using hostPath: $HOST_VOL_DIR"
+      cat <<PVYAML | kubectl --kubeconfig "$KUBECONFIG" apply -f - || true
 apiVersion: v1
 kind: PersistentVolume
 metadata:
   name: ${PV_NAME}
+  labels:
+    app: postgres
 spec:
   capacity:
     storage: ${STORAGE_SIZE}
@@ -125,11 +127,11 @@ spec:
   persistentVolumeReclaimPolicy: Retain
   storageClassName: manual
   hostPath:
-    path: "${HOST_PATH_UNESCAPED}"
+    path: "${HOST_VOL_DIR}"
     type: DirectoryOrCreate
 PVYAML
-    # create PVC with volumeName to bind to this PV
-    cat <<PVCYAML | kubectl --kubeconfig "$KUBECONFIG" apply -f - || true
+      # create PVC that binds to the PV
+      cat <<PVCYAML | kubectl --kubeconfig "$KUBECONFIG" apply -f - || true
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
@@ -143,9 +145,31 @@ spec:
   storageClassName: manual
   volumeName: ${PV_NAME}
 PVCYAML
-  else
-    # default behavior: create PVC that uses storage class (e.g., local-path)
-    cat <<PVCYAML | kubectl --kubeconfig "$KUBECONFIG" apply -f - || true
+    else
+      # fallback to existing k8s file if present
+      if [ -f "$MODULE_DIR/k8s/postgres/postgres-hostpath-pv.yaml" ]; then
+        echo "Applying k8s/postgres/postgres-hostpath-pv.yaml (fallback)"
+        kubectl --kubeconfig "$KUBECONFIG" apply -f "$MODULE_DIR/k8s/postgres/postgres-hostpath-pv.yaml" || true
+        PV_NAME=$(awk '/^metadata:/ {md=1; next} md && /^[[:space:]]*name:/ {gsub(/^[[:space:]]*name:[[:space:]]*/,"", $0); print $0; exit}' "$MODULE_DIR/k8s/postgres/postgres-hostpath-pv.yaml" 2>/dev/null || true)
+        if [ -n "$PV_NAME" ]; then
+          cat <<PVCYAML | kubectl --kubeconfig "$KUBECONFIG" apply -f - || true
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: ${PVC_NAME}
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: ${STORAGE_SIZE}
+  storageClassName: manual
+  volumeName: ${PV_NAME}
+PVCYAML
+        fi
+      else
+        echo "No hostPath volume directory $HOST_VOL_DIR and no k8s/postgres/postgres-hostpath-pv.yaml — falling back to storageClass provisioning"
+        cat <<PVCYAML | kubectl --kubeconfig "$KUBECONFIG" apply -f - || true
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
@@ -158,7 +182,25 @@ spec:
     requests:
       storage: ${STORAGE_SIZE}
 PVCYAML
-  fi
+      fi
+    fi
+  else
+     # default behavior: create PVC that uses storage class (e.g., local-path)
+     cat <<PVCYAML | kubectl --kubeconfig "$KUBECONFIG" apply -f - || true
+ apiVersion: v1
+ kind: PersistentVolumeClaim
+ metadata:
+   name: ${PVC_NAME}
+ spec:
+   accessModes:
+     - ReadWriteOnce
+   storageClassName: ${STORAGE_CLASS}
+   resources:
+     requests:
+       storage: ${STORAGE_SIZE}
+ PVCYAML
+   fi
+ fi
 fi
 
 # Ensure PVC health: if PVC exists but is Pending and references a missing PV or wrong storageClass, delete it so local-path can re-provision.

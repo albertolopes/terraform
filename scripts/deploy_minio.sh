@@ -41,11 +41,39 @@ if [ -n "$EXISTING_PVC_JSON" ]; then
   fi
 fi
 
-# Apply PV, secret, deployment, service, ingress
-kubectl --kubeconfig "$KUBECONFIG" apply -f "$MODULE_DIR/k8s/minio-hostpath-pv.yaml"
-kubectl --kubeconfig "$KUBECONFIG" apply -f "$MODULE_DIR/k8s/minio-secret.yaml"
-kubectl --kubeconfig "$KUBECONFIG" apply -f "$MODULE_DIR/k8s/minio.yaml"
-kubectl --kubeconfig "$KUBECONFIG" apply -f "$MODULE_DIR/k8s/minio-ingress.yaml"
+# Apply PV (dynamically using repo-relative volume directory if present), then secret, deployment, service, ingress
+HOST_VOL_DIR="$MODULE_DIR/volume/minio"
+if [ -d "$HOST_VOL_DIR" ]; then
+  echo "Creating PV using hostPath: $HOST_VOL_DIR"
+  cat <<PVYAML | kubectl --kubeconfig "$KUBECONFIG" apply -f -
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pv-minio-hostpath
+  labels:
+    app: minio
+spec:
+  capacity:
+    storage: 1Gi
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: manual
+  hostPath:
+    path: "${HOST_VOL_DIR}"
+    type: DirectoryOrCreate
+PVYAML
+else
+  # fallback to existing k8s file if present
+  if [ -f "$MODULE_DIR/k8s/minio/minio-hostpath-pv.yaml" ]; then
+    kubectl --kubeconfig "$KUBECONFIG" apply -f "$MODULE_DIR/k8s/minio/minio-hostpath-pv.yaml" || true
+  else
+    echo "Warning: hostPath directory $HOST_VOL_DIR not found and no k8s/minio/minio-hostpath-pv.yaml present; continuing without hostPath PV" >&2
+  fi
+fi
+kubectl --kubeconfig "$KUBECONFIG" apply -f "$MODULE_DIR/k8s/minio/minio-secret.yaml"
+kubectl --kubeconfig "$KUBECONFIG" apply -f "$MODULE_DIR/k8s/minio/minio.yaml"
+kubectl --kubeconfig "$KUBECONFIG" apply -f "$MODULE_DIR/k8s/minio/minio-ingress.yaml"
 
 # Wait for pod ready
 ATT=0
