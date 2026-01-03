@@ -33,3 +33,9 @@ variable "use_local_path" {
   description = "When true, use the local-path StorageClass (dynamic) instead of creating a hostPath PV"
   default     = true
 }
+
+variable "enable_cleanup" {
+  type        = bool
+  description = "When true the cleanup_postgres_pv null_resource will run and delete postgres PV/PVC. Default false to avoid accidental deletion during normal terraform apply."
+  default     = false
+}

@@ -1,0 +1,4 @@
+services:
+  keycloak:
+    image: quay.io/keycloak/keycloak:25.0.6
+

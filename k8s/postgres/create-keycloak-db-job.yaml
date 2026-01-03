@@ -1,0 +1,48 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: create-keycloak-db
+  namespace: default
+spec:
+  backoffLimit: 1
+  template:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+      - name: create-keycloak-db
+        image: postgres:15
+        env:
+          - name: PGPASSWORD
+            valueFrom:
+              secretKeyRef:
+                name: postgres-credentials
+                key: POSTGRES_PASSWORD
+          - name: PGUSER
+            valueFrom:
+              secretKeyRef:
+                name: postgres-credentials
+                key: POSTGRES_USER
+          - name: PGHOST
+            value: "postgres"
+          - name: PGPORT
+            value: "5432"
+        command:
+          - /bin/sh
+          - -c
+          - |
+            set -e
+            echo "Checking for role 'keycloak'..."
+            if ! psql -h "$PGHOST" -U "$PGUSER" -p "$PGPORT" -tc "SELECT 1 FROM pg_roles WHERE rolname='keycloak'" | grep -q 1; then
+              echo "Creating role keycloak"
+              psql -h "$PGHOST" -U "$PGUSER" -p "$PGPORT" -c "CREATE ROLE keycloak WITH LOGIN PASSWORD 'keycloak';"
+            else
+              echo "role keycloak already exists"
+            fi
+            echo "Checking for database 'keycloak'..."
+            if ! psql -h "$PGHOST" -U "$PGUSER" -p "$PGPORT" -tc "SELECT 1 FROM pg_database WHERE datname='keycloak'" | grep -q 1; then
+              echo "Creating database keycloak"
+              psql -h "$PGHOST" -U "$PGUSER" -p "$PGPORT" -c "CREATE DATABASE keycloak OWNER keycloak;"
+            else
+              echo "database keycloak already exists"
+            fi
+

@@ -12,6 +12,5 @@ spec:
   persistentVolumeReclaimPolicy: Retain
   storageClassName: manual
   hostPath:
-    # Replace this path if you want to manage the PV manifest manually.
     path: "/path/to/repo/volume/postgres"
     type: DirectoryOrCreate

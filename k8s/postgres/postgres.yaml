@@ -1,7 +1,6 @@
 # Editable manifest for Postgres
-# - Change `spec.replicas` to control pod count
-# - Adjust `resources.requests` and `resources.limits` on the container to set CPU/memory
-# - PVC `postgres-pvc` binds to `pv-postgres-hostpath` (hostPath) by default
+# - StatefulSet uses existing postgres-pvc (suitable for single primary replica)
+# - If you want HA, migrate to a Postgres operator or StatefulSet with replication (outside scope)
 
 apiVersion: v1
 kind: PersistentVolumeClaim
@@ -17,16 +16,32 @@ spec:
   storageClassName: manual
   volumeName: pv-postgres-hostpath
 ---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres-headless
+  namespace: default
+spec:
+  clusterIP: None
+  selector:
+    app: postgres
+  ports:
+  - name: postgresql
+    port: 5432
+    targetPort: 5432
+---
 apiVersion: apps/v1
-kind: Deployment
+kind: StatefulSet
 metadata:
   name: postgres
   namespace: default
 spec:
-  replicas: 2
+  serviceName: postgres-headless
+  replicas: 1
   selector:
     matchLabels:
       app: postgres
+  podManagementPolicy: OrderedReady
   template:
     metadata:
       labels:
@@ -78,10 +93,7 @@ spec:
         volumeMounts:
         - name: postgres-data
           mountPath: /var/lib/postgresql/data
-      volumes:
-      - name: postgres-data
-        persistentVolumeClaim:
-          claimName: postgres-pvc
+  volumeClaimTemplates: []
 ---
 apiVersion: v1
 kind: Service

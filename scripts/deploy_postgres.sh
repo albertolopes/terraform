@@ -462,6 +462,65 @@ while [ $ATT -lt $MAX ]; do
   READY=$(kubectl --kubeconfig "$KUBECONFIG" -n default get deploy postgres -o jsonpath='{.status.readyReplicas}' 2>/dev/null || echo 0)
   READY=${READY:-0}
   if [ "$READY" -ge 1 ]; then
+    # Ensure Keycloak DB exists (idempotent Job) - keep DB provisioning owned by Postgres module
+    echo "Postgres deployment ready -> ensuring keycloak database exists"
+
+    kubectl --kubeconfig "$KUBECONFIG" -n default apply -f - <<'YAML'
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: create-keycloak-db
+  namespace: default
+spec:
+  backoffLimit: 1
+  template:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+      - name: create-keycloak-db
+        image: postgres:15
+        env:
+          - name: PGPASSWORD
+            value: "${POSTGRES_PASSWORD}"
+          - name: PGUSER
+            value: "${POSTGRES_USER}"
+          - name: PGHOST
+            value: "postgres"
+          - name: PGPORT
+            value: "5432"
+        command:
+          - /bin/sh
+          - -c
+          - |
+            set -e
+            echo "Checking for role 'keycloak'..."
+            if ! psql -h "$PGHOST" -U "$PGUSER" -p "$PGPORT" -tc "SELECT 1 FROM pg_roles WHERE rolname='keycloak'" | grep -q 1; then
+              echo "Creating role keycloak"
+              psql -h "$PGHOST" -U "$PGUSER" -p "$PGPORT" -c "CREATE ROLE keycloak WITH LOGIN PASSWORD 'keycloak';"
+            else
+              echo "role keycloak already exists"
+            fi
+            echo "Checking for database 'keycloak'..."
+            if ! psql -h "$PGHOST" -U "$PGUSER" -p "$PGPORT" -tc "SELECT 1 FROM pg_database WHERE datname='keycloak'" | grep -q 1; then
+              echo "Creating database keycloak"
+              psql -h "$PGHOST" -U "$PGUSER" -p "$PGPORT" -c "CREATE DATABASE keycloak OWNER keycloak;"
+            else
+              echo "database keycloak already exists"
+            fi
+YAML
+
+    # wait for job completion (idempotent)
+    echo "Waiting up to 180s for Job create-keycloak-db to complete..."
+    if ! kubectl --kubeconfig "$KUBECONFIG" -n default wait --for=condition=complete job/create-keycloak-db --timeout=180s; then
+      echo "Job create-keycloak-db failed or timed out; dumping logs for debugging" >&2
+      kubectl --kubeconfig "$KUBECONFIG" -n default logs -l job-name=create-keycloak-db --tail=200 || true
+      kubectl --kubeconfig "$KUBECONFIG" -n default delete job create-keycloak-db --ignore-not-found=true || true
+      # do not fail the whole deploy; log and continue (Keycloak deploy will decide readiness independently)
+    else
+      echo "Job create-keycloak-db succeeded; cleaning up job resource"
+      kubectl --kubeconfig "$KUBECONFIG" -n default delete job create-keycloak-db --ignore-not-found=true || true
+    fi
+
     echo "postgres deployment ready"
     exit 0
   fi

@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: keycloak-realm
+  namespace: default
+data:
+  realm-export.json: |
+    {
+      "realm": "example",
+      "enabled": true,
+      "roles": {
+        "realm": []
+      },
+      "clients": [],
+      "users": []
+    }

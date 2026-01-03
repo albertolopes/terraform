@@ -1,0 +1,166 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: keycloak
+  namespace: default
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: keycloak
+  template:
+    metadata:
+      labels:
+        app: keycloak
+    spec:
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app
+                  operator: In
+                  values:
+                  - keycloak
+              topologyKey: kubernetes.io/hostname
+      initContainers:
+      - name: wait-for-postgres
+        image: postgres:15
+        env:
+        - name: PGPASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: postgres-credentials
+              key: POSTGRES_PASSWORD
+        command:
+        - sh
+        - -c
+        - |
+          set -e
+          echo "Waiting for postgres to be ready..."
+          until pg_isready -h postgres -p 5432 -U postgres >/dev/null 2>&1; do
+            sleep 2
+          done
+          echo "Postgres is ready. Ensuring database/user exist..."
+          # Create user if not exists
+          if ! psql -h postgres -U postgres -d postgres -tAc "SELECT 1 FROM pg_roles WHERE rolname='keycloak'" | grep -q 1; then
+            psql -h postgres -U postgres -d postgres -c "CREATE USER keycloak WITH ENCRYPTED PASSWORD 'keycloak';"
+          else
+            echo "User keycloak already exists"
+          fi
+          # Create database if not exists, owned by keycloak
+          if ! psql -h postgres -U postgres -d postgres -tAc "SELECT 1 FROM pg_database WHERE datname='keycloak'" | grep -q 1; then
+            psql -h postgres -U postgres -d postgres -c "CREATE DATABASE keycloak OWNER keycloak;"
+          else
+            echo "Database keycloak already exists"
+          fi
+        resources:
+          requests:
+            cpu: "100m"
+            memory: "2Gi"
+        volumeMounts: []
+      containers:
+      - name: keycloak
+        image: quay.io/keycloak/keycloak:25.0.6
+        args: ["start-dev","--import-realm"]
+        env:
+        - name: KEYCLOAK_ADMIN
+          valueFrom:
+            secretKeyRef:
+              name: keycloak-admin
+              key: KEYCLOAK_ADMIN
+        - name: KEYCLOAK_ADMIN_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: keycloak-admin
+              key: KEYCLOAK_ADMIN_PASSWORD
+        - name: KC_HTTP_HOST
+          value: "0.0.0.0"
+        - name: KC_HEALTH_ENABLED
+          value: "true"
+        - name: KC_DB
+          value: "postgres"
+        - name: KC_DB_URL_HOST
+          value: "postgres"
+        - name: KC_DB_URL_PORT
+          value: "5432"
+        - name: KC_DB_URL_DATABASE
+          value: "keycloak"
+        - name: KC_DB_USERNAME
+          valueFrom:
+            secretKeyRef:
+              name: keycloak-db-credentials
+              key: KC_DB_USERNAME
+        - name: KC_DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: keycloak-db-credentials
+              key: KC_DB_PASSWORD
+        - name: KC_PROXY
+          value: "edge"
+        ports:
+        - containerPort: 8080
+        - containerPort: 8787
+        - containerPort: 9000
+        readinessProbe:
+          tcpSocket:
+            port: 8080
+          initialDelaySeconds: 90
+          timeoutSeconds: 5
+          periodSeconds: 10
+          failureThreshold: 6
+        livenessProbe:
+          httpGet:
+            path: /q/health/live
+            port: 8080
+          initialDelaySeconds: 180
+          timeoutSeconds: 5
+          periodSeconds: 20
+          failureThreshold: 6
+        startupProbe:
+          tcpSocket:
+            port: 8080
+          initialDelaySeconds: 120
+          timeoutSeconds: 5
+          periodSeconds: 10
+          failureThreshold: 30
+        resources:
+          requests:
+            cpu: "500m"
+            memory: "512Mi"
+          limits:
+            cpu: "1"
+            memory: "1Gi"
+        volumeMounts:
+        - name: realm
+          mountPath: /opt/keycloak/data/import/realm-export.json
+          subPath: realm-export.json
+      volumes:
+      - name: realm
+        configMap:
+          name: keycloak-realm
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: keycloak
+  namespace: default
+spec:
+  selector:
+    app: keycloak
+  type: LoadBalancer
+  ports:
+  - name: http
+    port: 8080
+    targetPort: 8080
+    nodePort: 32080
+  - name: debug
+    port: 8787
+    targetPort: 8787
+    nodePort: 32087
+  - name: management
+    port: 9000
+    targetPort: 9000
+    nodePort: 32090
