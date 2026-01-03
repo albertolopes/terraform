@@ -1,6 +1,3 @@
-# Fallback PV manifest — path is a placeholder and should NOT be used as-is.
-# The deployment script `scripts/deploy_postgres.sh` now creates the PV dynamically from the repo-relative
-# directory: `${MODULE_DIR}/volume/postgres`. Keep this file as a reference or for manual edits.
 apiVersion: v1
 kind: PersistentVolume
 metadata:

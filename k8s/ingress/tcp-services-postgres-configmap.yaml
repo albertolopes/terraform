@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: tcp-services
+  namespace: ingress-nginx
+data:
+  "5432": "default/postgres:5432"
+# Notes:
+# - This tells the ingress-nginx controller to listen on port 5432 and forward TCP to service default/postgres:5432.
+# - The ingress-nginx controller must be deployed with support for TCP configmap (most k8s nginx deployments support it when mounted).
+# - After applying, check the ingress-nginx-controller Pod logs and the Service of ingress-nginx for the port mapping.

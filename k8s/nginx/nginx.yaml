@@ -1,0 +1,139 @@
+# Editable manifest for nginx
+# - Change `spec.replicas` to control pod count
+# - Adjust `resources.requests` and `resources.limits` on the container to set CPU/memory
+# - PV uses hostPath `pv-nginx-hostpath` (adjust path if needed)
+
+# NOTE: PersistentVolume removed to allow dynamic provisioning via the cluster's local-path provisioner.
+---
+# Note: PVC intentionally omitted to avoid attempting to change an existing PVC's immutable spec.
+# The nginx deployment uses an emptyDir for html content here; for persistent hostPath-backed storage,
+# use the deploy_postgres/deploy_minio pattern which creates PV/PVC dynamically from repo/volume/.
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nginx-config
+  namespace: default
+data:
+  nginx.conf: |
+    user  nginx;
+    worker_processes  1;
+    error_log  /var/log/nginx/error.log warn;
+    pid        /var/run/nginx.pid;
+
+    events {
+      worker_connections 1024;
+    }
+
+    http {
+      include       /etc/nginx/mime.types;
+      default_type  application/octet-stream;
+      sendfile        on;
+      keepalive_timeout  65;
+
+      server {
+        listen 80;
+        server_name _;
+
+        location / {
+          root /usr/share/nginx/html;
+          index index.html index.htm;
+        }
+      }
+    }
+---
+# ConfigMap that provides the default HTML content the initContainer will copy into the PVC-backed volume.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nginx-html
+  namespace: default
+data:
+  index.html: |
+    <!doctype html>
+    <html>
+    <head>
+      <meta charset="utf-8">
+      <title>NGINX (managed by k3d)</title>
+    </head>
+    <body>
+      <h1>NGINX is running (managed by k3d + Terraform)</h1>
+      <p>If you see this page, the nginx pod served the default index.html from a ConfigMap.</p>
+    </body>
+    </html>
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nginx
+  namespace: default
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: nginx
+  template:
+    metadata:
+      labels:
+        app: nginx
+    spec:
+      securityContext:
+        fsGroup: 101
+      initContainers:
+      - name: copy-html
+        image: busybox:1.36.1
+        command: ["/bin/sh","-c","cp -r /tmp/html/* /usr/share/nginx/html || true"]
+        resources:
+          requests:
+            cpu: "50m"
+            memory: "32Mi"
+          limits:
+            cpu: "100m"
+            memory: "64Mi"
+        volumeMounts:
+        - name: html-config
+          mountPath: /tmp/html
+        - name: html
+          mountPath: /usr/share/nginx/html
+      containers:
+      - name: nginx
+        image: nginx:1.29.4-alpine
+        ports:
+        - containerPort: 80
+        resources:
+          requests:
+            cpu: "100m"
+            memory: "128Mi"
+          limits:
+            cpu: "200m"
+            memory: "256Mi"
+        volumeMounts:
+        - name: html
+          mountPath: /usr/share/nginx/html
+        - name: nginx-config
+          mountPath: /etc/nginx/nginx.conf
+          subPath: nginx.conf
+      volumes:
+      - name: html
+        emptyDir: {}
+      - name: nginx-config
+        configMap:
+          name: nginx-config
+      - name: html-config
+        configMap:
+          name: nginx-html
+---
+# Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: nginx
+  namespace: default
+spec:
+  selector:
+    app: nginx
+  type: LoadBalancer
+  ports:
+  - name: http
+    port: 80
+    targetPort: 80

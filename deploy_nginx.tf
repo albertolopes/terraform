@@ -7,8 +7,8 @@ resource "null_resource" "deploy_nginx" {
       KUBECONFIG  = "${path.module}/.k3d_kubeconfig"
     }
 
-    # Run the deployment script which creates ConfigMaps, secrets and Deployment/Service
-    command = "bash ${path.module}/scripts/deploy_nginx.sh"
+    # Apply the nginx manifest directly so the declared replica count in k8s/nginx/nginx.yaml is authoritative
+    command = "kubectl --kubeconfig ${path.module}/.k3d_kubeconfig apply -f ${path.module}/k8s/nginx/nginx.yaml"
     interpreter = ["/bin/bash", "-c"]
   }
 

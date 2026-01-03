@@ -1,0 +1,39 @@
+name: mycluster
+servers: 2
+agents: 2
+
+nodeResources:
+  server:
+    cpu: "1.0"
+    memory: "2g"
+  agent:
+    cpu: "0.5"
+    memory: "1g"
+
+kubelet:
+  maxPodsPerNode: 110
+
+podDefaults:
+  requests:
+    cpu: "100m"
+    memory: "128Mi"
+  limits:
+    cpu: "200m"
+    memory: "256Mi"
+
+# Optional labels per node (match node names created by k3d: k3d-<cluster>-server-0, k3d-<cluster>-agent-0 ...)
+nodeLabels:
+  - name: "k3d-mycluster-server-0"
+    labels:
+      role: control-plane
+  - name: "k3d-mycluster-agent-0"
+    labels:
+      role: worker
+
+# Optional taints per node
+nodeTaints:
+  - name: "k3d-mycluster-server-0"
+    taints:
+      - key: "dedicated"
+        value: "infra"
+        effect: "NoSchedule"

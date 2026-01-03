@@ -1,3 +1,8 @@
+# Editable manifest for MinIO
+# - Change `spec.replicas` to control pod count
+# - Adjust `resources.requests` and `resources.limits` to set CPU/memory for the container
+# - The PV/PVC uses hostPath `pv-minio-hostpath` and storageClass `manual`
+
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
@@ -27,6 +32,8 @@ spec:
       labels:
         app: minio
     spec:
+      securityContext:
+        fsGroup: 1000
       containers:
       - name: minio
         image: minio/minio:latest
@@ -45,6 +52,14 @@ spec:
         ports:
         - containerPort: 9000
         - containerPort: 9001
+        # Resource requests/limits: tune these for your environment
+        resources:
+          requests:
+            cpu: "200m"
+            memory: "256Mi"
+          limits:
+            cpu: "500m"
+            memory: "512Mi"
         volumeMounts:
         - name: data
           mountPath: /data
@@ -69,4 +84,3 @@ spec:
   - name: console
     port: 9001
     targetPort: 9001
-

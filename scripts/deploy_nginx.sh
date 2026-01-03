@@ -280,6 +280,16 @@ EOF
   SECRET_VOLUME=""
 fi
 
+# If a k8s manifest exists for nginx in the repo, prefer that and exit (so terraform-managed manifest is authoritative)
+if [ -f "$MODULE_DIR/k8s/nginx/nginx.yaml" ]; then
+  echo "Found repository nginx manifest: $MODULE_DIR/k8s/nginx/nginx.yaml — applying and exiting"
+  kubectl --kubeconfig "$KUBECONFIG" apply -f "$MODULE_DIR/k8s/nginx/nginx.yaml" || true
+  # wait for rollout using standard deployment name 'nginx'
+  echo "Waiting for nginx deployment rollout..."
+  kubectl --kubeconfig "$KUBECONFIG" -n default rollout status deployment/nginx --timeout=120s || true
+  exit 0
+fi
+
 # apply nginx deployment + service + configmaps (use DEPLOY_IMAGE detected/imported earlier)
 cat <<YAML | kubectl --kubeconfig "$KUBECONFIG" apply -f -
 apiVersion: v1

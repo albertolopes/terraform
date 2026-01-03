@@ -12,6 +12,16 @@ if ! command -v kubectl >/dev/null 2>&1; then
   export PATH="$HOME/.local/bin:$PATH"
 fi
 
+PLATFORM=${PLATFORM:-"linux/amd64"}
+
+# source common lib for helper functions like k3d_import_cmd, k3d_list, kubectl_apply_with_validate_fallback
+if [ -f "$MODULE_DIR/scripts/lib.sh" ]; then
+  # shellcheck disable=SC1091
+  . "$MODULE_DIR/scripts/lib.sh"
+fi
+
+# NOTE: we intentionally do NOT perform docker login to Docker Hub here — images should be public or pre-pulled
+
 # images and tags we need
 CTRL_TAG="v1.14.1"
 CERT_TAG="v1.6.5"
@@ -23,10 +33,6 @@ TARFILE="$MODULE_DIR/.ingress-images.tar"
 REGISTRIES=("registry.k8s.io" "k8s.gcr.io" "quay.io" "ghcr.io")
 CHOSEN_CTRL=""
 CHOSEN_CERT=""
-
-# NOTE: we intentionally do NOT perform docker login to Docker Hub here — images should be public or pre-pulled
-
-PLATFORM=${PLATFORM:-"linux/amd64"}
 
 try_find_image() {
   local name="$1"; shift
@@ -98,14 +104,14 @@ if [ -n "$CHOSEN_CTRL" ] || [ -n "$CHOSEN_CERT" ]; then
       IMPORT_SUCCEEDED=false
       for img in "${IMAGES_TO_SAVE[@]}"; do
         echo "Attempting k3d image import by name: $img"
-        if k3d_import "$img" >/dev/null 2>&1; then
+        if k3d_import_cmd "$img" >/dev/null 2>&1; then
           echo "k3d image import succeeded for $img"
           IMPORT_SUCCEEDED=true
         else
           echo "k3d image import by name failed for $img; will try tar fallback later"
         fi
       done
-      # if all images imported by name, skip tar
+      # if any image imported by name, note it
       if [ "$IMPORT_SUCCEEDED" = true ]; then
         echo "At least one image imported by name into k3d"
       fi
@@ -127,7 +133,7 @@ if [ -n "$CHOSEN_CTRL" ] || [ -n "$CHOSEN_CERT" ]; then
       docker save -o "$TARFILE" "${PENDING_IMAGES[@]}" || true
       if [ -f "$TARFILE" ]; then
         if command -v k3d >/dev/null 2>&1; then
-          echo "Importing $TARFILE into k3d cluster 'mycluster'"
+          echo "Importing $TARFILE into k3d cluster '${K3D_CLUSTER_NAME:-mycluster}'"
           if k3d_import_cmd "$TARFILE" >/dev/null 2>&1; then
             echo "k3d tar import succeeded"
           else
@@ -273,7 +279,17 @@ fi
 # apply manifest
 # remove previously created admission jobs if they exist to avoid immutable-field patch errors
 kubectl --kubeconfig "$KUBECONFIG" -n ingress-nginx delete job ingress-nginx-admission-create ingress-nginx-admission-patch --ignore-not-found=true || true
-kubectl --kubeconfig "$KUBECONFIG" apply -f /tmp/ingress-nginx-cloud.yaml
+
+# Wait for kube API to be responsive before attempting to apply the manifest
+echo "Waiting for kube API to be ready before installing ingress..."
+if declare -F wait_for_kube_api >/dev/null 2>&1; then
+  if ! wait_for_kube_api "$KUBECONFIG" 120 2; then
+    echo "kube API did not become ready after timeout; attempting to proceed but kubectl may fail" >&2
+  fi
+fi
+
+# Use robust apply helper which retries with --validate=false on server-side validation failures
+kubectl_apply_with_validate_fallback "/tmp/ingress-nginx-cloud.yaml"
 kubectl --kubeconfig "$KUBECONFIG" -n ingress-nginx rollout status deployment/ingress-nginx-controller --timeout=180s || true
 
 # dump cluster diagnostics to a file for easier debugging
@@ -384,3 +400,24 @@ spec:
             port:
               number: 80
 YAML
+
+# Pre-clean Traefik (ensure Traefik is not present and won't block ingress ports)
+# This is idempotent and safe to run on clusters without Traefik.
+echo "Ensuring Traefik is absent to avoid port conflicts..." >&2
+# try helm uninstall if helm is present
+if command -v helm >/dev/null 2>&1; then
+  helm -n kube-system uninstall traefik --wait --timeout 30s || true
+fi
+# delete common traefik resources by label/name
+kubectl --kubeconfig "$KUBECONFIG" -n kube-system delete deployment,svc,daemonset,replicaset,job --ignore-not-found=true -l app=traefik || true
+kubectl --kubeconfig "$KUBECONFIG" -n kube-system delete deployment traefik --ignore-not-found=true || true
+kubectl --kubeconfig "$KUBECONFIG" -n kube-system delete svc traefik --ignore-not-found=true || true
+# delete svclb daemonsets if any (DaemonSets created by service lb) containing traefik in name
+for ds in $(kubectl --kubeconfig "$KUBECONFIG" -n kube-system get daemonset -o name 2>/dev/null | grep -i traefik || true); do
+  kubectl --kubeconfig "$KUBECONFIG" -n kube-system delete "$ds" --ignore-not-found=true || true
+done
+# delete any svclb pods containing traefik in name
+for p in $(kubectl --kubeconfig "$KUBECONFIG" -n kube-system get pods -o name 2>/dev/null | grep -i traefik || true); do
+  kubectl --kubeconfig "$KUBECONFIG" -n kube-system delete "$p" --ignore-not-found=true || true
+done
+

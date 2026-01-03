@@ -5,8 +5,8 @@ terraform.tfstate.backup
 *.tfstate
 *.tfstate.*
 .terraform.lock.hcl
-.tfplan
 *.tfplan
+*.tfplan.*
 
 # Terraform variable files (may contain secrets)
 *.tfvars
@@ -20,63 +20,94 @@ override.tf
 override.tf.json
 *_override.tf
 
-# k3d / kube (local kubeconfig, port-forward pids)
+# Kubernetes / k3d kubeconfigs and tooling
 .k3d_kubeconfig
 .k3d_port_forward.pid
 .k3d_*
 .kube/
 .kube/config
+.kubeconfig
 
-# Image tarballs / imports
+# Local cluster volumes and image tarballs (do NOT commit local data)
+volume/
+volume/**
+*.tar
 .ingress-images.tar
 .nginx_image.tar
-*.tar
+.postgres_image.tar
 
-# ignore our new compose names
+# Docker / Compose local overrides
+docker-compose.override.yml
+docker-compose.*.local.yml
+
+# Scripts outputs / temp files
+*.tmp
+*.temp
+*.bak
+*.orig
+*.swp
+*.swo
 *.log
+*.out
+*.pid
+/tmp/
 
-# Logs
-*.log
-*.log.*
-run_deploy.log
-terraform_apply.log
-terraform_deploy_target.log
-
-# SSL / certs / keys (sensitive)
-certs/
-ssl/
-*.crt
-*.key
-*.pem
-
-# Editor / OS files
-.DS_Store
-Thumbs.db
+# Editor/IDE
 .idea/
 .vscode/
-*.swp
-*~
+*.iml
+*.sublime-project
+*.sublime-workspace
 
-# Backup / temp files
-*.bak
-*.tmp
-*.orig
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
 
-# Language runtime / package manager
+# Secrets, certificates, keys, env files
+*.pem
+*.key
+*.crt
+certs/
+ssl/
+.env
+.env.*
+secrets.yml
+*.secret
+
+# Package managers and build artifacts
 node_modules/
 npm-debug.log
 yarn-error.log
+pip-wheel-metadata/
 __pycache__/
-*.pyc
+*.py[cod]
+*.egg-info/
+dist/
+build/
 
-# Misc
-.env
-.env.*
+# Logs, reports
+coverage/
+reports/
+*.lcov
+
+# Ignore generated kube artifacts cache or local-only manifests
+.k8s/
+
+# Ignore local runtime sockets and state
+*.sock
+*.lock
+
+# Ignore miscellaneous
 .history
+*.cache
 
-# Ignore any generated credentials or secrets files
-*.secret
-secrets.yml
+# Keep tracked directories for k8s manifests and scripts
+# (do not ignore /k8s or /scripts so manifests remain versioned)
+!k8s/
+!scripts/
 
-# Allow explicit inclusion via negate patterns as needed
-# !/path/to/keep
+# Explicitly ignore terraform plan output files (requested)
+*.tfplan
+
+# End of file

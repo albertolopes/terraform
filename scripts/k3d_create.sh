@@ -1,40 +1,91 @@
 #!/usr/bin/env bash
 set -euo pipefail
-MODULE_DIR=${MODULE_DIR:-$(pwd)}
-# ensure ~/.local/bin exists and is in PATH for this script
-mkdir -p "$HOME/.local/bin"
-export PATH="$HOME/.local/bin:$PATH"
 
-# Install k3d locally if not present
-if ! command -v k3d >/dev/null 2>&1; then
-  echo "k3d not found — downloading latest k3d into $HOME/.local/bin/k3d"
-  curl -sL "https://github.com/k3d-io/k3d/releases/latest/download/k3d-linux-amd64" -o "$HOME/.local/bin/k3d"
-  chmod +x "$HOME/.local/bin/k3d"
+CLUSTER_CONFIG=${CLUSTER_CONFIG:-"$(pwd)/cluster.yaml"}
+DRY_RUN=${DRY_RUN:-0}
+WORKDIR=$(pwd)
+
+if [ ! -f "$CLUSTER_CONFIG" ]; then
+  echo "Cluster config not found: $CLUSTER_CONFIG" >&2
+  exit 1
 fi
 
-# Allow overriding the host port for Postgres LB mapping
-K3D_POSTGRES_HOST_PORT=${K3D_POSTGRES_HOST_PORT:-15432}
-# MinIO host ports (hostPort:containerPort mapping)
-K3D_MINIO_HOST_PORT=${K3D_MINIO_HOST_PORT:-19000}
-K3D_MINIO_CONSOLE_HOST_PORT=${K3D_MINIO_CONSOLE_HOST_PORT:-19001}
+# simple YAML parsing (works for the simple structure we have)
+name=$(awk -F":" '/^name:/ {gsub(/"| /, "", $2); print $2; exit}' "$CLUSTER_CONFIG" || true)
+servers=$(awk -F":" '/^servers:/ {gsub(/ /, "", $2); print $2; exit}' "$CLUSTER_CONFIG" || true)
+agents=$(awk -F":" '/^agents:/ {gsub(/ /, "", $2); print $2; exit}' "$CLUSTER_CONFIG" || true)
+maxpods=$(awk -F":" '/maxPodsPerNode/ {gsub(/ /, "", $2); print $2; exit}' "$CLUSTER_CONFIG" || true)
 
-if ! k3d cluster list | grep -q "^mycluster\b"; then
-  echo "Creating k3d cluster 'mycluster' with port mapping 80:80@loadbalancer, 443:443@loadbalancer, 30080:30080@loadbalancer, ${K3D_POSTGRES_HOST_PORT}:5432@loadbalancer"
-  k3d cluster create mycluster --wait --k3s-arg "--disable=traefik@server:0" \
-    --port "80:80@loadbalancer" --port "443:443@loadbalancer" --port "30080:30080@loadbalancer" \
-    --port "${K3D_POSTGRES_HOST_PORT}:5432@loadbalancer" --port "${K3D_MINIO_HOST_PORT}:9000@loadbalancer" --port "${K3D_MINIO_CONSOLE_HOST_PORT}:9001@loadbalancer"
-else
-  echo "Cluster 'mycluster' exists — recreating to ensure correct port mappings and Traefik disabled"
-  k3d cluster delete mycluster || true
-  k3d cluster create mycluster --wait --k3s-arg "--disable=traefik@server:0" \
-    --port "80:80@loadbalancer" --port "443:443@loadbalancer" --port "30080:30080@loadbalancer" \
-    --port "${K3D_POSTGRES_HOST_PORT}:5432@loadbalancer" --port "${K3D_MINIO_HOST_PORT}:9000@loadbalancer" --port "${K3D_MINIO_CONSOLE_HOST_PORT}:9001@loadbalancer"
+name=${name:-mycluster}
+servers=${servers:-1}
+agents=${agents:-0}
+maxpods=${maxpods:-110}
+
+# allow override via env var
+name=${K3D_CLUSTER_NAME:-$name}
+
+# Build base command
+CMD=(k3d cluster create "$name" --wait --servers "$servers" --agents "$agents")
+# kubelet max-pods on server and agent
+CMD+=(--k3s-arg "--kubelet-arg=--max-pods=$maxpods@server:0" --k3s-arg "--kubelet-arg=--max-pods=$maxpods@agent:0")
+
+# Optionally mount repo volume directories into all nodes so hostPath PVs map to host
+VOLUME_DIRS=("$WORKDIR/volume/postgres" "$WORKDIR/volume/minio" "$WORKDIR/volume/nginx")
+for d in "${VOLUME_DIRS[@]}"; do
+  # ensure host dir exists
+  if [ ! -d "$d" ]; then
+    mkdir -p "$d" || true
+  fi
+  # add mount to all nodes
+  CMD+=(--volume "$d:$d@all")
+done
+
+# Expose HTTP/HTTPS ports on loadbalancer
+CMD+=(--port "80:80@loadbalancer" --port "443:443@loadbalancer")
+
+# Show command
+echo "k3d create command to run:"
+printf '%s ' "${CMD[@]}"
+echo
+
+if [ "$DRY_RUN" = "1" ] || [ "$DRY_RUN" = "true" ]; then
+  echo "DRY_RUN=yes — not executing"
+  exit 0
 fi
 
-# export kubeconfig for this cluster to module path so other steps can read it
-k3d kubeconfig get mycluster > "$MODULE_DIR/.k3d_kubeconfig"
-# Replace 0.0.0.0 endpoints with 127.0.0.1 to avoid kubectl trying to connect to 0.0.0.0
-if command -v sed >/dev/null 2>&1; then
-  sed -i.bak -e 's/0.0.0.0/127.0.0.1/g' "$MODULE_DIR/.k3d_kubeconfig" || true
+# If cluster already exists, optionally delete/recreate when FORCE_RECREATE is set
+if command -v k3d >/dev/null 2>&1; then
+  if k3d cluster list --no-headers | awk '{print $1}' | grep -xq "$name"; then
+    if [ "${FORCE_RECREATE:-0}" = "1" ] || [ "${FORCE_RECREATE:-false}" = "true" ]; then
+      echo "FORCE_RECREATE set — deleting existing cluster $name"
+      k3d cluster delete "$name" || true
+    else
+      echo "Cluster $name already exists: skipping creation"
+      # Export kubeconfig for use by other scripts
+      if k3d kubeconfig get "$name" >/dev/null 2>&1; then
+        k3d kubeconfig get "$name" > "$WORKDIR/.k3d_kubeconfig" || true
+        chmod 600 "$WORKDIR/.k3d_kubeconfig" || true
+        echo "Wrote kubeconfig to $WORKDIR/.k3d_kubeconfig"
+      fi
+      echo "Applying docker resource hints (best-effort)"
+      SERVER_LB="k3d-${name}-serverlb"
+      if docker ps --format '{{.Names}}' | grep -q "^${SERVER_LB}$"; then
+        docker update --cpus 1.0 --memory 2g --memory-swap 2g "${SERVER_LB}" || true
+      fi
+      exit 0
+    fi
+  fi
 fi
-chmod 600 "$MODULE_DIR/.k3d_kubeconfig"
+
+# Execute the command
+echo "Executing: ${CMD[*]}"
+"${CMD[@]}"
+
+# Export kubeconfig
+if k3d kubeconfig get "$name" >/dev/null 2>&1; then
+  k3d kubeconfig get "$name" > "$WORKDIR/.k3d_kubeconfig"
+  chmod 600 "$WORKDIR/.k3d_kubeconfig" || true
+  echo "Wrote kubeconfig to $WORKDIR/.k3d_kubeconfig"
+fi
+
+echo "Cluster '$name' created"
