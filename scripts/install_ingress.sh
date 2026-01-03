@@ -292,6 +292,57 @@ fi
 kubectl_apply_with_validate_fallback "/tmp/ingress-nginx-cloud.yaml"
 kubectl --kubeconfig "$KUBECONFIG" -n ingress-nginx rollout status deployment/ingress-nginx-controller --timeout=180s || true
 
+# If the repo contains a persistent override to set Service as NodePort, apply it now (keeps configuration in repo)
+if [ -f "$MODULE_DIR/k8s/ingress/ingress-service-nodeport.yaml" ]; then
+  echo "Applying repo-managed ingress Service override: k8s/ingress/ingress-service-nodeport.yaml"
+  kubectl --kubeconfig "$KUBECONFIG" apply -f "$MODULE_DIR/k8s/ingress/ingress-service-nodeport.yaml" || true
+fi
+
+# --- NEW: convert ingress service to NodePort to avoid hostPort conflicts caused by svclb ---
+# If a LoadBalancer svc exists, switch it to NodePort and set explicit nodePorts to avoid svclb DaemonSet needing hostPorts
+if kubectl --kubeconfig "$KUBECONFIG" -n ingress-nginx get svc ingress-nginx-controller >/dev/null 2>&1; then
+  echo "Patching ingress-nginx-controller Service to type=NodePort (nodePorts: 30082,30444) to avoid svclb hostPort scheduling issues"
+  # read existing ports to preserve names
+  PORT_INFO=$(kubectl --kubeconfig "$KUBECONFIG" -n ingress-nginx get svc ingress-nginx-controller -o jsonpath='{.spec.ports[*].name}:{.spec.ports[*].port}' 2>/dev/null || true)
+  # fallback if names missing: use conventional names
+  if [ -z "$PORT_INFO" ]; then
+    PATCH='{"spec":{"type":"NodePort","ports":[{"name":"http","port":80,"nodePort":30082,"protocol":"TCP","targetPort":80},{"name":"https","port":443,"nodePort":30444,"protocol":"TCP","targetPort":443}]}}'
+  else
+    # try to build patch preserving existing names and ordering
+    # This is defensive; if parsing fails, fall back to default
+    read -r NAMES_AND_PORTS <<<"$PORT_INFO" || true
+    if echo "$NAMES_AND_PORTS" | grep -q ':'; then
+      # when jsonpath returns name:port pairs
+      IFS=' ' read -r -a PAIRS <<<"$NAMES_AND_PORTS"
+      PORTS_JSON=''
+      sep=''
+      idx=0
+      for p in "${PAIRS[@]}"; do
+        name_part=${p%%:*}
+        port_part=${p##*:}
+        if [ -z "$name_part" ] || [ "$name_part" = "<no value>" ]; then
+          if [ "$port_part" = "80" ]; then name_part="http"; fi
+          if [ "$port_part" = "443" ]; then name_part="https"; fi
+        fi
+        if [ $idx -eq 0 ]; then
+          nodep=30082
+        else
+          nodep=30444
+        fi
+        PORTS_JSON="${PORTS_JSON}${sep}{\"name\":\"${name_part}\",\"port\":${port_part},\"nodePort\":${nodep},\"protocol\":\"TCP\",\"targetPort\":${port_part}}"
+        sep=','
+        idx=$((idx+1))
+      done
+      PATCH='{"spec":{"type":"NodePort","ports":['"${PORTS_JSON}"']}}'
+    fi
+  fi
+  kubectl --kubeconfig "$KUBECONFIG" -n ingress-nginx patch svc ingress-nginx-controller --type="merge" -p "$PATCH" || true
+  # remove any svclb DaemonSet created for ingress to prevent leftover hostPort reservations
+  echo "Removing svclb DaemonSets/pods for ingress-nginx if present"
+  kubectl --kubeconfig "$KUBECONFIG" -n kube-system get daemonset -l app=svclb --no-headers -o custom-columns=":metadata.name" 2>/dev/null | grep "svclb-ingress-nginx" | xargs -r -n1 kubectl --kubeconfig "$KUBECONFIG" -n kube-system delete daemonset --ignore-not-found=true || true
+  kubectl --kubeconfig "$KUBECONFIG" -n kube-system get pods -l name=svclb-ingress-nginx-controller --no-headers -o custom-columns=":metadata.name" 2>/dev/null | xargs -r -n1 kubectl --kubeconfig "$KUBECONFIG" -n kube-system delete pod --ignore-not-found=true || true
+fi
+
 # dump cluster diagnostics to a file for easier debugging
 dump_diagnostics() {
   local out="${MODULE_DIR}/.ingress_diagnostics.txt"
