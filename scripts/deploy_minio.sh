@@ -203,27 +203,27 @@ if ! kubectl --kubeconfig "$KUBECONFIG" -n default wait --for=condition=Bound pv
   fi
 fi
 
+# Ensure old MinIO pods are removed so new template (single-node args) starts cleanly
+echo "Deleting any existing MinIO pods to force recreate with new StatefulSet template"
+kubectl --kubeconfig "$KUBECONFIG" -n default delete pod -l app=minio --ignore-not-found=true || true
+# give kubelet a moment to terminate pods and let the controller create new ones
+sleep 3
+
 # Apply secret, deployment and ingress using helper
 safe_kubectl_apply "$MODULE_DIR/k8s/minio/minio-secret.yaml"
 safe_kubectl_apply "$MODULE_DIR/k8s/minio/minio.yaml"
-safe_kubectl_apply "$MODULE_DIR/k8s/minio/minio-ingress.yaml"
+safe_kubectl_apply "$MODULE_DIR/k8s/minio/minio-ingress.yaml" || true
 
-# Wait for pod ready
-ATT=0
-MAX=60
-while [ $ATT -lt $MAX ]; do
-  READY=$(kubectl --kubeconfig "$KUBECONFIG" -n default get deploy minio -o jsonpath='{.status.readyReplicas}' 2>/dev/null || echo 0)
-  READY=${READY:-0}
-  if [ "$READY" -ge 1 ]; then
-    echo "minio deployment ready"
-    exit 0
-  fi
-  ATT=$((ATT+1))
-  echo "not ready yet ($ATT/$MAX)"
-  sleep 2
-done
+# Wait for pods with label app=minio to be Ready (works for Deployment or StatefulSet)
+echo "Waiting for MinIO pods to be Ready (timeout 300s)"
+if ! kubectl --kubeconfig "$KUBECONFIG" -n default wait --for=condition=ready pod -l app=minio --timeout=300s; then
+  echo "MinIO pods did not become Ready within timeout — showing diagnostics" >&2
+  kubectl --kubeconfig "$KUBECONFIG" -n default get pods -l app=minio -o wide || true
+  kubectl --kubeconfig "$KUBECONFIG" -n default describe sts minio || true
+  kubectl --kubeconfig "$KUBECONFIG" -n default logs -l app=minio --tail=200 || true
+  exit 1
+fi
 
-kubectl --kubeconfig "$KUBECONFIG" -n default get pods,svc,ingress,pvc -o wide || true
-kubectl --kubeconfig "$KUBECONFIG" -n default describe deploy minio || true
-kubectl --kubeconfig "$KUBECONFIG" -n default logs -l app=minio --tail=200 || true
-exit 1
+# If we reach here pods are Ready
+echo "minio deployment ready"
+exit 0

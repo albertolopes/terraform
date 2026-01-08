@@ -20,6 +20,81 @@ if [ -f "$MODULE_DIR/scripts/lib.sh" ]; then
   . "$MODULE_DIR/scripts/lib.sh"
 fi
 
+# --- ensure Traefik is not running (remove and wait) ---
+remove_traefik() {
+  echo "Ensuring Traefik is absent to avoid port conflicts..."
+  # try helm uninstall if helm present
+  if command -v helm >/dev/null 2>&1; then
+    helm -n kube-system uninstall traefik --wait --timeout 30s || true
+  fi
+
+  # delete common traefik resources by label/name and wait for pods to be gone
+  kubectl --kubeconfig "$KUBECONFIG" -n kube-system delete deployment,svc,daemonset,replicaset,job -l app=traefik --ignore-not-found=true || true
+  kubectl --kubeconfig "$KUBECONFIG" -n kube-system delete deployment traefik --ignore-not-found=true || true
+  kubectl --kubeconfig "$KUBECONFIG" -n kube-system delete svc traefik --ignore-not-found=true || true
+
+  # delete any svclb daemonsets/pods that reference traefik
+  # first try to find daemonsets with 'svclb' in the name and containing traefik
+  ds_to_del=$(kubectl --kubeconfig "$KUBECONFIG" -n kube-system get daemonset -o name 2>/dev/null | grep -i svclb || true)
+  for ds in $ds_to_del; do
+    # check if this ds has pods referencing traefik
+    name=$(basename "$ds")
+    if kubectl --kubeconfig "$KUBECONFIG" -n kube-system get ds "$name" -o yaml 2>/dev/null | grep -iq 'traefik\|ingress'; then
+      echo "Deleting svclb daemonset $name"
+      kubectl --kubeconfig "$KUBECONFIG" -n kube-system delete daemonset "$name" --ignore-not-found=true || true
+    fi
+  done
+
+  # delete any svclb pods containing traefik/traefik label
+  kubectl --kubeconfig "$KUBECONFIG" -n kube-system get pods -o name 2>/dev/null | grep -i traefik || true | xargs -r -n1 kubectl --kubeconfig "$KUBECONFIG" -n kube-system delete --ignore-not-found=true || true
+
+  # wait briefly until no traefik pods or services remain
+  echo "Waiting for Traefik pods/services to be removed (timeout 60s)"
+  for i in $(seq 1 12); do
+    sleep 5
+    if ! kubectl --kubeconfig "$KUBECONFIG" -n kube-system get pods -o name 2>/dev/null | grep -iq traefik; then
+      if ! kubectl --kubeconfig "$KUBECONFIG" -n kube-system get svc -o name 2>/dev/null | grep -iq traefik; then
+        echo "No Traefik pods/services detected"
+        return 0
+      fi
+    fi
+    echo "Traefik still present, waiting... ($((i*5))s)"
+  done
+  echo "Finished waiting for Traefik removal"
+}
+
+# call removal early
+remove_traefik || true
+
+# If lib.sh did not define wait_for_kube_api, provide a robust fallback implementation
+if ! declare -F wait_for_kube_api >/dev/null 2>&1; then
+  wait_for_kube_api() {
+    local kubeconfig=${1:-"$PWD/.k3d_kubeconfig"}
+    local timeout=${2:-300}
+    local step=${3:-5}
+    local elapsed=0
+    echo "Waiting up to ${timeout}s for kube API (kubeconfig=${kubeconfig})"
+    while true; do
+      # prefer GET /readyz if available
+      if kubectl --kubeconfig "$kubeconfig" get --raw="/readyz" >/dev/null 2>&1; then
+        echo "kube API ready"
+        return 0
+      fi
+      if kubectl --kubeconfig "$kubeconfig" version --short >/dev/null 2>&1; then
+        echo "kubectl can reach API"
+        return 0
+      fi
+      sleep "$step"
+      elapsed=$((elapsed + step))
+      echo "kube API not ready yet (${elapsed}s elapsed)"
+      if [ "$elapsed" -ge "$timeout" ]; then
+        echo "kube API did not become ready within ${timeout}s" >&2
+        return 1
+      fi
+    done
+  }
+fi
+
 # NOTE: we intentionally do NOT perform docker login to Docker Hub here — images should be public or pre-pulled
 
 # images and tags we need
@@ -283,13 +358,49 @@ kubectl --kubeconfig "$KUBECONFIG" -n ingress-nginx delete job ingress-nginx-adm
 # Wait for kube API to be responsive before attempting to apply the manifest
 echo "Waiting for kube API to be ready before installing ingress..."
 if declare -F wait_for_kube_api >/dev/null 2>&1; then
-  if ! wait_for_kube_api "$KUBECONFIG" 120 2; then
+  if ! wait_for_kube_api "$KUBECONFIG" 300 2; then
     echo "kube API did not become ready after timeout; attempting to proceed but kubectl may fail" >&2
   fi
 fi
 
 # Use robust apply helper which retries with --validate=false on server-side validation failures
 kubectl_apply_with_validate_fallback "/tmp/ingress-nginx-cloud.yaml"
+
+# --- wait for admission secret so pods can mount webhook cert volume ---
+echo "Waiting for Secret ingress-nginx-admission to exist (timeout 300s)"
+SECRET_WAIT=300
+SECRET_STEP=5
+SECRET_ELAPSED=0
+while true; do
+  if kubectl --kubeconfig "$KUBECONFIG" -n ingress-nginx get secret ingress-nginx-admission >/dev/null 2>&1; then
+    echo "Secret ingress-nginx-admission exists"
+    break
+  fi
+  # if job pods exist, wait for them to finish
+  if kubectl --kubeconfig "$KUBECONFIG" -n ingress-nginx get pods -l job-name=ingress-nginx-admission-create -o name >/dev/null 2>&1; then
+    echo "Admission create job pods detected — waiting for job completion"
+    kubectl --kubeconfig "$KUBECONFIG" -n ingress-nginx wait --for=condition=complete job/ingress-nginx-admission-create --timeout=120s || true
+  fi
+  sleep $SECRET_STEP
+  SECRET_ELAPSED=$((SECRET_ELAPSED + SECRET_STEP))
+  echo "Secret not ready yet (${SECRET_ELAPSED}s elapsed)"
+  if [ "$SECRET_ELAPSED" -ge "$SECRET_WAIT" ]; then
+    echo "Timeout waiting for ingress-nginx-admission secret; collecting diagnostics..." >&2
+    echo "=== pods in ingress-nginx ===" >&2
+    kubectl --kubeconfig "$KUBECONFIG" -n ingress-nginx get pods -o wide >&2 || true
+    echo "=== describe admission jobs ===" >&2
+    kubectl --kubeconfig "$KUBECONFIG" -n ingress-nginx describe job ingress-nginx-admission-create ingress-nginx-admission-patch >&2 || true
+    echo "=== logs for pods matching admission jobs ===" >&2
+    for p in $(kubectl --kubeconfig "$KUBECONFIG" -n ingress-nginx get pods -o name 2>/dev/null | grep -E 'ingress-nginx-admission-(create|patch)' || true); do
+      echo "---- logs for $p ----" >&2
+      kubectl --kubeconfig "$KUBECONFIG" -n ingress-nginx logs $p --all-containers --tail 200 >&2 || true
+    done
+    echo "Proceeding despite missing secret; the controller may fail to start until secret is created" >&2
+    break
+  fi
+done
+
+# Now wait for controller rollout (after secret is available or we attempted diagnostics)
 kubectl --kubeconfig "$KUBECONFIG" -n ingress-nginx rollout status deployment/ingress-nginx-controller --timeout=180s || true
 
 # If the repo contains a persistent override to set Service as NodePort, apply it now (keeps configuration in repo)
@@ -302,41 +413,9 @@ fi
 # If a LoadBalancer svc exists, switch it to NodePort and set explicit nodePorts to avoid svclb DaemonSet needing hostPorts
 if kubectl --kubeconfig "$KUBECONFIG" -n ingress-nginx get svc ingress-nginx-controller >/dev/null 2>&1; then
   echo "Patching ingress-nginx-controller Service to type=NodePort (nodePorts: 30082,30444) to avoid svclb hostPort scheduling issues"
-  # read existing ports to preserve names
-  PORT_INFO=$(kubectl --kubeconfig "$KUBECONFIG" -n ingress-nginx get svc ingress-nginx-controller -o jsonpath='{.spec.ports[*].name}:{.spec.ports[*].port}' 2>/dev/null || true)
-  # fallback if names missing: use conventional names
-  if [ -z "$PORT_INFO" ]; then
-    PATCH='{"spec":{"type":"NodePort","ports":[{"name":"http","port":80,"nodePort":30082,"protocol":"TCP","targetPort":80},{"name":"https","port":443,"nodePort":30444,"protocol":"TCP","targetPort":443}]}}'
-  else
-    # try to build patch preserving existing names and ordering
-    # This is defensive; if parsing fails, fall back to default
-    read -r NAMES_AND_PORTS <<<"$PORT_INFO" || true
-    if echo "$NAMES_AND_PORTS" | grep -q ':'; then
-      # when jsonpath returns name:port pairs
-      IFS=' ' read -r -a PAIRS <<<"$NAMES_AND_PORTS"
-      PORTS_JSON=''
-      sep=''
-      idx=0
-      for p in "${PAIRS[@]}"; do
-        name_part=${p%%:*}
-        port_part=${p##*:}
-        if [ -z "$name_part" ] || [ "$name_part" = "<no value>" ]; then
-          if [ "$port_part" = "80" ]; then name_part="http"; fi
-          if [ "$port_part" = "443" ]; then name_part="https"; fi
-        fi
-        if [ $idx -eq 0 ]; then
-          nodep=30082
-        else
-          nodep=30444
-        fi
-        PORTS_JSON="${PORTS_JSON}${sep}{\"name\":\"${name_part}\",\"port\":${port_part},\"nodePort\":${nodep},\"protocol\":\"TCP\",\"targetPort\":${port_part}}"
-        sep=','
-        idx=$((idx+1))
-      done
-      PATCH='{"spec":{"type":"NodePort","ports":['"${PORTS_JSON}"']}}'
-    fi
-  fi
-  kubectl --kubeconfig "$KUBECONFIG" -n ingress-nginx patch svc ingress-nginx-controller --type="merge" -p "$PATCH" || true
+  # Use a simple JSON patch to avoid shell quoting/parsing issues
+  PATCH_JSON='{"spec":{"type":"NodePort","ports":[{"name":"http","port":80,"nodePort":30082,"protocol":"TCP","targetPort":80},{"name":"https","port":443,"nodePort":30444,"protocol":"TCP","targetPort":443}]}}'
+  kubectl --kubeconfig "$KUBECONFIG" -n ingress-nginx patch svc ingress-nginx-controller --type="merge" -p "$PATCH_JSON" || true
   # remove any svclb DaemonSet created for ingress to prevent leftover hostPort reservations
   echo "Removing svclb DaemonSets/pods for ingress-nginx if present"
   kubectl --kubeconfig "$KUBECONFIG" -n kube-system get daemonset -l app=svclb --no-headers -o custom-columns=":metadata.name" 2>/dev/null | grep "svclb-ingress-nginx" | xargs -r -n1 kubectl --kubeconfig "$KUBECONFIG" -n kube-system delete daemonset --ignore-not-found=true || true
@@ -451,24 +530,4 @@ spec:
             port:
               number: 80
 YAML
-
-# Pre-clean Traefik (ensure Traefik is not present and won't block ingress ports)
-# This is idempotent and safe to run on clusters without Traefik.
-echo "Ensuring Traefik is absent to avoid port conflicts..." >&2
-# try helm uninstall if helm is present
-if command -v helm >/dev/null 2>&1; then
-  helm -n kube-system uninstall traefik --wait --timeout 30s || true
-fi
-# delete common traefik resources by label/name
-kubectl --kubeconfig "$KUBECONFIG" -n kube-system delete deployment,svc,daemonset,replicaset,job --ignore-not-found=true -l app=traefik || true
-kubectl --kubeconfig "$KUBECONFIG" -n kube-system delete deployment traefik --ignore-not-found=true || true
-kubectl --kubeconfig "$KUBECONFIG" -n kube-system delete svc traefik --ignore-not-found=true || true
-# delete svclb daemonsets if any (DaemonSets created by service lb) containing traefik in name
-for ds in $(kubectl --kubeconfig "$KUBECONFIG" -n kube-system get daemonset -o name 2>/dev/null | grep -i traefik || true); do
-  kubectl --kubeconfig "$KUBECONFIG" -n kube-system delete "$ds" --ignore-not-found=true || true
-done
-# delete any svclb pods containing traefik in name
-for p in $(kubectl --kubeconfig "$KUBECONFIG" -n kube-system get pods -o name 2>/dev/null | grep -i traefik || true); do
-  kubectl --kubeconfig "$KUBECONFIG" -n kube-system delete "$p" --ignore-not-found=true || true
-done
 

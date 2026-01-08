@@ -1,113 +1,62 @@
 # Terraform
-.terraform/
-terraform.tfstate
-terraform.tfstate.backup
 *.tfstate
 *.tfstate.*
+.tfplan
+.terraform/
 .terraform.lock.hcl
-*.tfplan
-*.tfplan.*
-
-# Terraform variable files (may contain secrets)
 *.tfvars
 *.tfvars.json
 
-# Terraform crash logs
-crash.log
+# Terraform Workspace local files
+.terraform.tfstate
+.terraform.tfstate.backup
 
-# Terraform overrides
-override.tf
-override.tf.json
-*_override.tf
-
-# Kubernetes / k3d kubeconfigs and tooling
-.k3d_kubeconfig
-.k3d_port_forward.pid
-.k3d_*
+# Kubernetes / kubeconfig
 .kube/
 .kube/config
+.k3d_kubeconfig
 .kubeconfig
 
-# Local cluster volumes and image tarballs (do NOT commit local data)
-volume/
-volume/**
-*.tar
-.ingress-images.tar
-.nginx_image.tar
-.postgres_image.tar
-
-# Docker / Compose local overrides
-docker-compose.override.yml
-docker-compose.*.local.yml
-
-# Scripts outputs / temp files
-*.tmp
-*.temp
-*.bak
-*.orig
-*.swp
-*.swo
-*.log
-*.out
-*.pid
-/tmp/
-
-# Editor/IDE
-.idea/
-.vscode/
-*.iml
-*.sublime-project
-*.sublime-workspace
-
-# OS files
-.DS_Store
-Thumbs.db
-desktop.ini
-
-# Secrets, certificates, keys, env files
+# Sensitive / credentials
 *.pem
 *.key
 *.crt
-certs/
-ssl/
+secrets.yaml
+*.env
 .env
-.env.*
-secrets.yml
-*.secret
 
-# Package managers and build artifacts
+# Docker and images and tarballs
+*.tar
+.nginx_image.tar
+.*_image.tar
+docker-compose*.yml
+docker-compose.yaml
+
+docker/
+
+# Logs and temporary
+*.log
+tmp/
+
+# IDE/editor
+.vscode/
+.idea/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Ignore local volume data (do NOT commit actual data)
+volume/
+
+# Node modules if any
 node_modules/
-npm-debug.log
-yarn-error.log
-pip-wheel-metadata/
-__pycache__/
-*.py[cod]
-*.egg-info/
-dist/
-build/
 
-# Logs, reports
-coverage/
-reports/
-*.lcov
+# Git plan outputs
+tfplan
 
-# Ignore generated kube artifacts cache or local-only manifests
-.k8s/
+# Other
+*.bak
+*~
 
-# Ignore local runtime sockets and state
-*.sock
-*.lock
-
-# Ignore miscellaneous
-.history
-*.cache
-
-# Keep tracked directories for k8s manifests and scripts
-# (do not ignore /k8s or /scripts so manifests remain versioned)
-!k8s/
-!scripts/
-
-# Explicitly ignore terraform plan output files (requested)
-*.tfplan
-
-# End of file

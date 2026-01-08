@@ -31,18 +31,26 @@ if ! command -v kubectl >/dev/null 2>&1; then
   export PATH="$HOME/.local/bin:$PATH"
 fi
 
+# Robust k3d import wrapper: prefer lib.sh k3d_import_cmd if present, otherwise try safe forms
 k3d_import() {
   src="$1"
+  # prefer shared helper if available
+  if declare -f k3d_import_cmd >/dev/null 2>&1; then
+    k3d_import_cmd "$src" && return 0 || true
+  fi
   if ! command -v k3d >/dev/null 2>&1; then
     echo "k3d not found; cannot import $src" >&2
     return 2
   fi
-  if k3d image import -c mycluster "$src" >/dev/null 2>&1; then
-    return 0
-  fi
+  # try long-form cluster flag
   if k3d image import --cluster mycluster "$src" >/dev/null 2>&1; then
     return 0
   fi
+  # try positional form
+  if k3d image import mycluster "$src" >/dev/null 2>&1; then
+    return 0
+  fi
+  # try without cluster
   if k3d image import "$src" >/dev/null 2>&1; then
     return 0
   fi
@@ -94,7 +102,7 @@ fi
 
 # If a docker/docker.yaml exists, prefer the postgres image defined there
 if [ -f "$MODULE_DIR/docker/postgres.yaml" ]; then
-  YAML_IMAGE=$(awk '/^[[:space:]]*postgres:\s*$/ { inp=1; next } inp && /image:/ { gsub(/^[[:space:]]*image:[[:space:]]*/,"",$0); print $0; exit }' "$MODULE_DIR/docker/postgres.yaml" | tr -d '"' | tr -d "'" || true)
+  YAML_IMAGE=$(awk '/^[[:space:]]*postgres:\s*$/ { inp=1; next } inp && /image:/ { gsub(/^[[:space:]]*image:[[:space:]]*/,"", $0); print $0; exit }' "$MODULE_DIR/docker/postgres.yaml" | tr -d '"' | tr -d "'" || true)
   if [ -n "$YAML_IMAGE" ]; then
     echo "Detected postgres image in docker/docker.yaml: $YAML_IMAGE"
     IMAGE="$YAML_IMAGE"
@@ -131,10 +139,126 @@ fi
 
 echo "Using image for deployment: $DEPLOY_IMAGE"
 
+# If a k8s postgres manifest exists, prefer applying it (StatefulSet) and wait for readiness
+if [ -f "$MODULE_DIR/k8s/postgres/postgres.yaml" ]; then
+  echo "Found repository postgres manifest: $MODULE_DIR/k8s/postgres/postgres.yaml"
+
+  # ensure postgres credentials secret exists (idempotent)
+  if ! kubectl --kubeconfig "$KUBECONFIG" -n default get secret postgres-credentials >/dev/null 2>&1; then
+    echo "Creating postgres-credentials secret with default credentials"
+    kubectl --kubeconfig "$KUBECONFIG" -n default create secret generic postgres-credentials \
+      --from-literal=POSTGRES_USER=${POSTGRES_USER} --from-literal=POSTGRES_PASSWORD=${POSTGRES_PASSWORD} || true
+  else
+    echo "postgres-credentials secret already exists"
+  fi
+
+  # If an existing PVC postgres-pvc exists, use it directly with a Deployment (keeps existing PV/PVC)
+  if kubectl --kubeconfig "$KUBECONFIG" -n default get pvc postgres-pvc >/dev/null 2>&1; then
+    echo "Existing PVC postgres-pvc found — creating Deployment that mounts it"
+    cat <<YAML | kubectl --kubeconfig "$KUBECONFIG" apply -f -
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres
+  namespace: default
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgres
+  template:
+    metadata:
+      labels:
+        app: postgres
+    spec:
+      containers:
+      - name: postgres
+        image: ${DEPLOY_IMAGE}
+        env:
+        - name: POSTGRES_USER
+          valueFrom:
+            secretKeyRef:
+              name: postgres-credentials
+              key: POSTGRES_USER
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: postgres-credentials
+              key: POSTGRES_PASSWORD
+        - name: POSTGRES_DB
+          value: ${POSTGRES_DB}
+        ports:
+        - containerPort: 5432
+        volumeMounts:
+        - name: postgres-data
+          mountPath: /var/lib/postgresql/data
+      volumes:
+      - name: postgres-data
+        persistentVolumeClaim:
+          claimName: postgres-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  namespace: default
+spec:
+  selector:
+    app: postgres
+  type: LoadBalancer
+  ports:
+  - name: postgresql
+    port: 5432
+    targetPort: 5432
+YAML
+
+    echo "Waiting for postgres Deployment rollout (timeout 300s)"
+    kubectl --kubeconfig "$KUBECONFIG" -n default rollout status deployment/postgres --timeout=300s || true
+    echo "Postgres deployment applied using existing PVC; exiting"
+    exit 0
+  fi
+
+  # apply manifest, substituting image if template uses postgres image line
+  TMP_POSTGRES_MANIFEST=$(mktemp -p "$MODULE_DIR" postgres-manifest-XXXXX.yaml)
+  sed "s#\(image:[[:space:]]*\).*#\1${DEPLOY_IMAGE}#g" "$MODULE_DIR/k8s/postgres/postgres.yaml" > "$TMP_POSTGRES_MANIFEST" || cp "$MODULE_DIR/k8s/postgres/postgres.yaml" "$TMP_POSTGRES_MANIFEST"
+  echo "Applying postgres manifest from $TMP_POSTGRES_MANIFEST"
+  kubectl --kubeconfig "$KUBECONFIG" apply -f "$TMP_POSTGRES_MANIFEST" || kubectl --kubeconfig "$KUBECONFIG" apply -f "$MODULE_DIR/k8s/postgres/postgres.yaml" || true
+  rm -f "$TMP_POSTGRES_MANIFEST" || true
+
+  # Wait for PVCs created by StatefulSet to be bound (if any)
+  echo "Waiting for PVCs (postgres-data) to be Bound (timeout 300s)"
+  ATT=0
+  MAX=150
+  while [ $ATT -lt $MAX ]; do
+    # List any PVCs with name containing 'postgres-data' in default ns
+    PVCS=$(kubectl --kubeconfig "$KUBECONFIG" -n default get pvc -o name 2>/dev/null | grep postgres-data || true)
+    ALLBOUND=true
+    for p in $PVCS; do
+      st=$(kubectl --kubeconfig "$KUBECONFIG" -n default get $p -o jsonpath='{.status.phase}' 2>/dev/null || echo "")
+      if [ "$st" != "Bound" ]; then
+        ALLBOUND=false
+        break
+      fi
+    done
+    if [ "$ALLBOUND" = true ]; then
+      echo "All postgres-data PVCs are Bound"
+      break
+    fi
+    ATT=$((ATT+1))
+    sleep 2
+  done
+
+  echo "Waiting for StatefulSet/postgres rollout to be ready (timeout 300s)"
+  kubectl --kubeconfig "$KUBECONFIG" -n default rollout status statefulset/postgres --timeout=300s || true
+
+  echo "Postgres manifest applied; exiting deploy_postgres.sh"
+  exit 0
+fi
+
 HOST_PATH=""
 if [ -f "$MODULE_DIR/docker/postgres.yaml" ]; then
   # Simpler and robust: look for a volume line that contains an absolute host path (starts with '/')
-  HOST_PATH=$(grep -Po '^[[:space:]]*-\s*"(\/[^"]+' "$MODULE_DIR/docker/postgres.yaml" 2>/dev/null | sed -E 's/^[[:space:]]*-\s*"//' | head -n1 || true)
+  HOST_PATH=$(grep -Po '^[[:space:]]*-\s*"(\/[^"']+' "$MODULE_DIR/docker/postgres.yaml" 2>/dev/null | sed -E 's/^[[:space:]]*-\s*"//' | head -n1 || true)
   # fallback: unquoted path (no double quotes)
   if [ -z "$HOST_PATH" ]; then
     HOST_PATH=$(grep -Po '^[[:space:]]*\-\s*(\/[^:]+):' "$MODULE_DIR/docker/postgres.yaml" 2>/dev/null | sed -E 's/^[[:space:]]*\-\s*//' | sed -E 's/:$//' | head -n1 || true)

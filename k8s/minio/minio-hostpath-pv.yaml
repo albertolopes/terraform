@@ -9,12 +9,11 @@ metadata:
     app: minio
 spec:
   capacity:
-    storage: 1Gi
+    storage: 10Gi
   accessModes:
     - ReadWriteOnce
   persistentVolumeReclaimPolicy: Retain
   storageClassName: manual
   hostPath:
-    # Replace this path if you want to manage the PV manifest manually.
-    path: "/path/to/repo/volume/minio"
+    path: "${PWD}/volume/minio"
     type: DirectoryOrCreate
