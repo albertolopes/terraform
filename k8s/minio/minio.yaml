@@ -36,7 +36,9 @@ spec:
     - name: api
       port: 9000
       targetPort: 9000
-      nodePort: 30090
+    - name: console
+      port: 9001
+      targetPort: 9001
 
 ---
 apiVersion: policy/v1
@@ -88,10 +90,6 @@ spec:
           # pin to a tested release; do not use 'latest' in production
           image: minio/minio:RELEASE.2025-09-07T16-13-09Z
           imagePullPolicy: IfNotPresent
-          # For local/k3d testing with replicas=1 we run MinIO in single-node mode.
-          # To enable distributed mode in production set `replicas` to the number of
-          # desired nodes and update the args to include all peer URLs (or use the MinIO
-          # Operator which handles this automatically).
           args:
             - server
             - /data
@@ -106,7 +104,8 @@ spec:
                 secretKeyRef:
                   name: minio-credentials
                   key: secretkey
-            # Optional: enable console if required and bind to different port
+            - name: MINIO_CONSOLE_ADDRESS
+              value: ":9001"
           ports:
             - containerPort: 9000
               name: api

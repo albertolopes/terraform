@@ -366,136 +366,20 @@ fi
 # Use robust apply helper which retries with --validate=false on server-side validation failures
 kubectl_apply_with_validate_fallback "/tmp/ingress-nginx-cloud.yaml"
 
-# --- wait for admission secret so pods can mount webhook cert volume ---
-echo "Waiting for Secret ingress-nginx-admission to exist (timeout 300s)"
-SECRET_WAIT=300
-SECRET_STEP=5
-SECRET_ELAPSED=0
-while true; do
-  if kubectl --kubeconfig "$KUBECONFIG" -n ingress-nginx get secret ingress-nginx-admission >/dev/null 2>&1; then
-    echo "Secret ingress-nginx-admission exists"
-    break
-  fi
-  # if job pods exist, wait for them to finish
-  if kubectl --kubeconfig "$KUBECONFIG" -n ingress-nginx get pods -l job-name=ingress-nginx-admission-create -o name >/dev/null 2>&1; then
-    echo "Admission create job pods detected — waiting for job completion"
-    kubectl --kubeconfig "$KUBECONFIG" -n ingress-nginx wait --for=condition=complete job/ingress-nginx-admission-create --timeout=120s || true
-  fi
-  sleep $SECRET_STEP
-  SECRET_ELAPSED=$((SECRET_ELAPSED + SECRET_STEP))
-  echo "Secret not ready yet (${SECRET_ELAPSED}s elapsed)"
-  if [ "$SECRET_ELAPSED" -ge "$SECRET_WAIT" ]; then
-    echo "Timeout waiting for ingress-nginx-admission secret; collecting diagnostics..." >&2
-    echo "=== pods in ingress-nginx ===" >&2
-    kubectl --kubeconfig "$KUBECONFIG" -n ingress-nginx get pods -o wide >&2 || true
-    echo "=== describe admission jobs ===" >&2
-    kubectl --kubeconfig "$KUBECONFIG" -n ingress-nginx describe job ingress-nginx-admission-create ingress-nginx-admission-patch >&2 || true
-    echo "=== logs for pods matching admission jobs ===" >&2
-    for p in $(kubectl --kubeconfig "$KUBECONFIG" -n ingress-nginx get pods -o name 2>/dev/null | grep -E 'ingress-nginx-admission-(create|patch)' || true); do
-      echo "---- logs for $p ----" >&2
-      kubectl --kubeconfig "$KUBECONFIG" -n ingress-nginx logs $p --all-containers --tail 200 >&2 || true
-    done
-    echo "Proceeding despite missing secret; the controller may fail to start until secret is created" >&2
-    break
-  fi
-done
+# Immediately remove any existing svclb daemonsets for ingress-nginx to avoid hostPort collisions
+echo "Ensuring no svclb-ingress-nginx daemonsets remain (avoid hostPort conflicts)"
+kubectl --kubeconfig "$KUBECONFIG" -n kube-system get daemonset -o name 2>/dev/null | grep -E 'svclb-ingress-nginx|svclb-traefik' || true | xargs -r -n1 kubectl --kubeconfig "$KUBECONFIG" -n kube-system delete --ignore-not-found=true || true
+# Also delete any lingering svclb pods by name pattern
+kubectl --kubeconfig "$KUBECONFIG" -n kube-system get pods -o name 2>/dev/null | grep -E 'svclb-ingress-nginx|svclb-traefik' || true | xargs -r -n1 kubectl --kubeconfig "$KUBECONFIG" -n kube-system delete --ignore-not-found=true || true
 
-# Now wait for controller rollout (after secret is available or we attempted diagnostics)
-kubectl --kubeconfig "$KUBECONFIG" -n ingress-nginx rollout status deployment/ingress-nginx-controller --timeout=180s || true
-
-# If the repo contains a persistent override to set Service as NodePort, apply it now (keeps configuration in repo)
-if [ -f "$MODULE_DIR/k8s/ingress/ingress-service-nodeport.yaml" ]; then
-  echo "Applying repo-managed ingress Service override: k8s/ingress/ingress-service-nodeport.yaml"
-  kubectl --kubeconfig "$KUBECONFIG" apply -f "$MODULE_DIR/k8s/ingress/ingress-service-nodeport.yaml" || true
-fi
-
-# --- NEW: convert ingress service to NodePort to avoid hostPort conflicts caused by svclb ---
-# If a LoadBalancer svc exists, switch it to NodePort and set explicit nodePorts to avoid svclb DaemonSet needing hostPorts
+# --- IMMEDIATE PATCH: convert newly-created ingress controller Service to NodePort to avoid svclb/hostPort scheduling issues
 if kubectl --kubeconfig "$KUBECONFIG" -n ingress-nginx get svc ingress-nginx-controller >/dev/null 2>&1; then
-  echo "Patching ingress-nginx-controller Service to type=NodePort (nodePorts: 30082,30444) to avoid svclb hostPort scheduling issues"
-  # Use a simple JSON patch to avoid shell quoting/parsing issues
+  echo "Patching ingress-nginx-controller Service to type=NodePort immediately (nodePorts: 30082,30444)"
   PATCH_JSON='{"spec":{"type":"NodePort","ports":[{"name":"http","port":80,"nodePort":30082,"protocol":"TCP","targetPort":80},{"name":"https","port":443,"nodePort":30444,"protocol":"TCP","targetPort":443}]}}'
   kubectl --kubeconfig "$KUBECONFIG" -n ingress-nginx patch svc ingress-nginx-controller --type="merge" -p "$PATCH_JSON" || true
-  # remove any svclb DaemonSet created for ingress to prevent leftover hostPort reservations
-  echo "Removing svclb DaemonSets/pods for ingress-nginx if present"
-  kubectl --kubeconfig "$KUBECONFIG" -n kube-system get daemonset -l app=svclb --no-headers -o custom-columns=":metadata.name" 2>/dev/null | grep "svclb-ingress-nginx" | xargs -r -n1 kubectl --kubeconfig "$KUBECONFIG" -n kube-system delete daemonset --ignore-not-found=true || true
-  kubectl --kubeconfig "$KUBECONFIG" -n kube-system get pods -l name=svclb-ingress-nginx-controller --no-headers -o custom-columns=":metadata.name" 2>/dev/null | xargs -r -n1 kubectl --kubeconfig "$KUBECONFIG" -n kube-system delete pod --ignore-not-found=true || true
 fi
 
-# dump cluster diagnostics to a file for easier debugging
-dump_diagnostics() {
-  local out="${MODULE_DIR}/.ingress_diagnostics.txt"
-  echo "===== ingress diagnostics: $(date -u) =====" > "$out"
-  echo "KUBECONFIG=$KUBECONFIG" >> "$out"
-  echo "--- kubectl -n ingress-nginx get pods -o wide ---" >> "$out"
-  kubectl --kubeconfig "$KUBECONFIG" -n ingress-nginx get pods -o wide >> "$out" 2>&1 || true
-  echo "--- kubectl -n ingress-nginx describe deployment ingress-nginx-controller ---" >> "$out"
-  kubectl --kubeconfig "$KUBECONFIG" -n ingress-nginx describe deployment ingress-nginx-controller >> "$out" 2>&1 || true
-  echo "--- kubectl -n ingress-nginx describe pods (all) ---" >> "$out"
-  kubectl --kubeconfig "$KUBECONFIG" -n ingress-nginx describe pods >> "$out" 2>&1 || true
-  echo "--- kubectl -n ingress-nginx logs -by label) ---" >> "$out"
-  kubectl --kubeconfig "$KUBECONFIG" -n ingress-nginx logs -l app.kubernetes.io/name=ingress-nginx --tail=500 >> "$out" 2>&1 || true
-  echo "--- kubectl -n ingress-nginx events ---" >> "$out"
-  kubectl --kubeconfig "$KUBECONFIG" -n ingress-nginx get events --sort-by=.metadata.creationTimestamp | tail -n 200 >> "$out" 2>&1 || true
-  echo "--- k3d image list -c mycluster (fallback plain) ---" >> "$out"
-  (k3d_list 2>&1 || k3d image list 2>&1) >> "$out" 2>&1 || true
-  echo "--- docker ps (k3d containers) ---" >> "$out"
-  docker ps --format '{{.Names}} {{.Ports}}' | grep k3d >> "$out" 2>&1 || true
-  echo "Diagnostics written to $out"
-}
-
-# If rollout didn't finish, collect diagnostics and attempt an automatic patch to use the imported REF
-STATUS=$(kubectl --kubeconfig "$KUBECONFIG" -n ingress-nginx get deploy ingress-nginx-controller -o jsonpath='{.status.conditions[?(@.type=="Available")].status}' 2>/dev/null || true)
-if [ "$STATUS" != "True" ]; then
-  echo "Ingress controller rollout did not reach Available=true; gathering diagnostics..." >&2
-  dump_diagnostics
-  kubectl --kubeconfig "$KUBECONFIG" -n ingress-nginx get pods -o wide || true
-  kubectl --kubeconfig "$KUBECONFIG" -n ingress-nginx describe deployment ingress-nginx-controller || true
-  kubectl --kubeconfig "$KUBECONFIG" -n ingress-nginx get pods -o name | xargs -r -n1 kubectl --kubeconfig "$KUBECONFIG" -n ingress-nginx describe || true
-  kubectl --kubeconfig "$KUBECONFIG" -n ingress-nginx get events --sort-by=.metadata.creationTimestamp | tail -n 200 || true
-
-  # If webhook validation is blocking (no endpoints), temporarily set failurePolicy to Ignore
-  echo "Attempting to relax admission webhooks (failurePolicy -> Ignore) to allow controller to start" >&2
-  if kubectl --kubeconfig "$KUBECONFIG" get validatingwebhookconfiguration ingress-nginx-admission >/dev/null 2>&1; then
-    kubectl --kubeconfig "$KUBECONFIG" get validatingwebhookconfiguration ingress-nginx-admission -o yaml > /tmp/ingress-vwc.yaml || true
-    if [ -f /tmp/ingress-vwc.yaml ]; then
-      sed -i 's/failurePolicy:\s*Fail/failurePolicy: Ignore/g' /tmp/ingress-vwc.yaml || true
-      kubectl --kubeconfig "$KUBECONFIG" apply -f /tmp/ingress-vwc.yaml || true
-      echo "Patched validatingwebhookconfiguration to failurePolicy=Ignore" >&2
-    fi
-  fi
-  if kubectl --kubeconfig "$KUBECONFIG" get mutatingwebhookconfiguration ingress-nginx-admission >/dev/null 2>&1; then
-    kubectl --kubeconfig "$KUBECONFIG" get mutatingwebhookconfiguration ingress-nginx-admission -o yaml > /tmp/ingress-mwc.yaml || true
-    if [ -f /tmp/ingress-mwc.yaml ]; then
-      sed -i 's/failurePolicy:\s*Fail/failurePolicy: Ignore/g' /tmp/ingress-mwc.yaml || true
-      kubectl --kubeconfig "$KUBECONFIG" apply -f /tmp/ingress-mwc.yaml || true
-      echo "Patched mutatingwebhookconfiguration to failurePolicy=Ignore" >&2
-    fi
-  fi
-
-  # Try to patch the deployment to use the CHOSEN_CTRL_REF if available
-  if [ -n "${CHOSEN_CTRL_REF:-}" ]; then
-    echo "Attempting to patch deployment to use image ${CHOSEN_CTRL_REF} for all containers..." >&2
-    # get container names
-    CONTAINERS=$(kubectl --kubeconfig "$KUBECONFIG" -n ingress-nginx get deploy ingress-nginx-controller -o jsonpath='{.spec.template.spec.containers[*].name}' || true)
-    if [ -n "$CONTAINERS" ]; then
-      SET_IMAGE_ARGS=()
-      for cname in $CONTAINERS; do
-        SET_IMAGE_ARGS+=("${cname}=${CHOSEN_CTRL_REF}")
-      done
-      # apply set image
-      kubectl --kubeconfig "$KUBECONFIG" -n ingress-nginx set image deployment/ingress-nginx-controller "${SET_IMAGE_ARGS[*]}" --record || true
-      echo "Patched deployment; waiting additional 120s for rollout..." >&2
-      kubectl --kubeconfig "$KUBECONFIG" -n ingress-nginx rollout status deployment/ingress-nginx-controller --timeout=120s || true
-    else
-      echo "Could not determine container names for deployment; skipping patch" >&2
-    fi
-  else
-    echo "No CHOSEN_CTRL_REF available to patch deployment" >&2
-  fi
-fi
-
-# Wait for admission webhook endpoints (so webhook validations succeed)
+# --- wait for admission webhook endpoints (so webhook validations succeed) ---
 echo "Waiting for ingress-nginx admission endpoints..."
 ATTEMPTS=90
 SLEEP=2
@@ -526,7 +410,7 @@ spec:
         pathType: Prefix
         backend:
           service:
-            name: nginx-service
+            name: nginx
             port:
               number: 80
 YAML

@@ -79,22 +79,6 @@ spec:
     spec:
       securityContext:
         fsGroup: 101
-      initContainers:
-      - name: copy-html
-        image: busybox:1.36.1
-        command: ["/bin/sh","-c","cp -r /tmp/html/* /usr/share/nginx/html || true"]
-        resources:
-          requests:
-            cpu: "50m"
-            memory: "32Mi"
-          limits:
-            cpu: "100m"
-            memory: "64Mi"
-        volumeMounts:
-        - name: html-config
-          mountPath: /tmp/html
-        - name: html
-          mountPath: /usr/share/nginx/html
       containers:
       - name: nginx
         image: nginx:1.29.4-alpine
@@ -108,20 +92,18 @@ spec:
             cpu: "200m"
             memory: "256Mi"
         volumeMounts:
-        - name: html
+        - name: html-config
           mountPath: /usr/share/nginx/html
         - name: nginx-config
           mountPath: /etc/nginx/nginx.conf
           subPath: nginx.conf
       volumes:
-      - name: html
-        emptyDir: {}
-      - name: nginx-config
-        configMap:
-          name: nginx-config
-      - name: html-config
-        configMap:
-          name: nginx-html
+       - name: nginx-config
+         configMap:
+           name: nginx-config
+       - name: html-config
+         configMap:
+           name: nginx-html
 ---
 # Service
 apiVersion: v1
@@ -132,7 +114,7 @@ metadata:
 spec:
   selector:
     app: nginx
-  type: LoadBalancer
+  type: ClusterIP
   ports:
   - name: http
     port: 80

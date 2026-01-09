@@ -4,17 +4,17 @@ metadata:
   name: keycloak-host-ingress
   namespace: default
   annotations:
-    kubernetes.io/ingress.class: nginx
+    kubernetes.io/ingress.class: "nginx"
 spec:
+  ingressClassName: nginx
   rules:
-  - host: keycloak.example.local
-    http:
-      paths:
-      - path: /
-        pathType: Prefix
-        backend:
-          service:
-            name: keycloak
-            port:
-              number: 8080
-
+    - host: keycloak.127.0.0.1.nip.io
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: keycloak
+                port:
+                  number: 8080
