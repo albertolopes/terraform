@@ -381,7 +381,7 @@ fi
 
 # --- wait for admission webhook endpoints (so webhook validations succeed) ---
 echo "Waiting for ingress-nginx admission endpoints..."
-ATTEMPTS=90
+ATTEMPTS=180
 SLEEP=2
 for i in $(seq 1 $ATTEMPTS); do
   EP=$(kubectl --kubeconfig "$KUBECONFIG" -n ingress-nginx get endpoints ingress-nginx-controller-admission -o jsonpath='{.subsets}' 2>/dev/null || true)
