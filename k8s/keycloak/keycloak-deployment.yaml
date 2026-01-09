@@ -111,14 +111,6 @@ spec:
           timeoutSeconds: 5
           periodSeconds: 10
           failureThreshold: 6
-        livenessProbe:
-          httpGet:
-            path: /q/health/live
-            port: 8080
-          initialDelaySeconds: 180
-          timeoutSeconds: 5
-          periodSeconds: 20
-          failureThreshold: 6
         startupProbe:
           tcpSocket:
             port: 8080

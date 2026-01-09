@@ -1,29 +1,66 @@
-# Editable manifest for MinIO
-# - Change `spec.replicas` to control pod count
-# - Adjust `resources.requests` and `resources.limits` to set CPU/memory for the container
-# - The PV/PVC uses hostPath `pv-minio-hostpath` and storageClass `manual`
+# Production-oriented manifest for MinIO
+# - Pin image to a specific release
+# - Run as non-root user, use resource requests/limits and anti-affinity
+# - Use StatefulSet in distributed mode with volumeClaimTemplates
+# - Provide optional TLS secret mount and recommend secure secret creation
+# - storageClassName: local-path is suitable for k3d/dev; replace with cloud storage in prod
 
 apiVersion: v1
-kind: PersistentVolumeClaim
+kind: Service
 metadata:
-  name: minio-pvc
+  name: minio-headless
   namespace: default
+  labels:
+    app: minio
 spec:
-  accessModes:
-    - ReadWriteOnce
-  resources:
-    requests:
-      storage: 1Gi
-  storageClassName: manual
-  volumeName: pv-minio-hostpath
+  clusterIP: None
+  selector:
+    app: minio
+  ports:
+    - name: api
+      port: 9000
+      targetPort: 9000
 ---
-apiVersion: apps/v1
-kind: Deployment
+apiVersion: v1
+kind: Service
 metadata:
   name: minio
   namespace: default
+  labels:
+    app: minio
 spec:
-  replicas: 1
+  selector:
+    app: minio
+  type: LoadBalancer
+  ports:
+    - name: api
+      port: 9000
+      targetPort: 9000
+      nodePort: 30090
+
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: minio-pdb
+  namespace: default
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: minio
+
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: minio
+  namespace: default
+  labels:
+    app: minio
+spec:
+  serviceName: minio-headless
+  replicas: 1 # adjust to your infra; for k3d you may lower this to 1-2
   selector:
     matchLabels:
       app: minio
@@ -33,54 +70,102 @@ spec:
         app: minio
     spec:
       securityContext:
+        runAsUser: 1000
+        runAsGroup: 1000
         fsGroup: 1000
+        runAsNonRoot: true
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchLabels:
+                    app: minio
+                topologyKey: kubernetes.io/hostname
       containers:
-      - name: minio
-        image: minio/minio:latest
-        args: ["server", "/data", "--console-address", ":9001"]
-        env:
-        - name: MINIO_ROOT_USER
-          valueFrom:
-            secretKeyRef:
-              name: minio-credentials
-              key: MINIO_ROOT_USER
-        - name: MINIO_ROOT_PASSWORD
-          valueFrom:
-            secretKeyRef:
-              name: minio-credentials
-              key: MINIO_ROOT_PASSWORD
-        ports:
-        - containerPort: 9000
-        - containerPort: 9001
-        # Resource requests/limits: tune these for your environment
+        - name: minio
+          # pin to a tested release; do not use 'latest' in production
+          image: minio/minio:RELEASE.2025-09-07T16-13-09Z
+          imagePullPolicy: IfNotPresent
+          # For local/k3d testing with replicas=1 we run MinIO in single-node mode.
+          # To enable distributed mode in production set `replicas` to the number of
+          # desired nodes and update the args to include all peer URLs (or use the MinIO
+          # Operator which handles this automatically).
+          args:
+            - server
+            - /data
+          env:
+            - name: MINIO_ROOT_USER
+              valueFrom:
+                secretKeyRef:
+                  name: minio-credentials
+                  key: accesskey
+            - name: MINIO_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: minio-credentials
+                  key: secretkey
+            # Optional: enable console if required and bind to different port
+          ports:
+            - containerPort: 9000
+              name: api
+            - containerPort: 9001
+              name: console
+          readinessProbe:
+            tcpSocket:
+              port: 9000
+            initialDelaySeconds: 20
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 6
+          livenessProbe:
+            tcpSocket:
+              port: 9000
+            initialDelaySeconds: 60
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 5
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "512Mi"
+            limits:
+              cpu: "1"
+              memory: "2Gi"
+          volumeMounts:
+            - name: data
+              mountPath: /data
+            # Optional: mount TLS certs if you create a TLS secret named minio-tls
+            - name: minio-tls
+              mountPath: /certs
+              readOnly: true
+      # Only mount TLS secret if it exists; keep volume entry to avoid pod failure if secret absent
+      volumes:
+        - name: minio-tls
+          secret:
+            secretName: minio-tls
+            optional: true
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
         resources:
           requests:
-            cpu: "200m"
-            memory: "256Mi"
-          limits:
-            cpu: "500m"
-            memory: "512Mi"
-        volumeMounts:
-        - name: data
-          mountPath: /data
-      volumes:
-      - name: data
-        persistentVolumeClaim:
-          claimName: minio-pvc
+            storage: 10Gi
+        # In k3d/local testing use local-path. Replace with your cloud StorageClass for production.
+        storageClassName: local-path
+
 ---
-apiVersion: v1
-kind: Service
-metadata:
-  name: minio
-  namespace: default
-spec:
-  selector:
-    app: minio
-  type: LoadBalancer
-  ports:
-  - name: api
-    port: 9000
-    targetPort: 9000
-  - name: console
-    port: 9001
-    targetPort: 9001
+# NOTES AND ACTION ITEMS (PRODUCTION)
+# 1) Secrets: create a secure Kubernetes Secret `minio-credentials` with keys `accesskey` and `secretkey`.
+#    Example (run locally on control machine):
+#      kubectl create secret generic minio-credentials \
+#        --from-literal=accesskey="<YOUR_USER>" \
+#        --from-literal=secretkey="<STRONG_PASSWORD>" -n default
+# 2) TLS: create a TLS Secret `minio-tls` (cert/key) and MinIO will mount it at /certs. Configure MinIO to use it.
+# 3) Storage: replace `local-path` with your cloud StorageClass (rook-ceph, aws-ebs, gce-pd, etc.) in `volumeClaimTemplates`.
+# 4) Image pinning: test and pin a stable release; use a private registry if required and add imagePullSecrets.
+# 5) Operator: for production, consider MinIO Operator which simplifies distributed setup, scaling and upgrades.
+# 6) Monitoring/Backup: add Prometheus metrics scraping, healthchecks, and backup plan (mc mirror or snapshots).

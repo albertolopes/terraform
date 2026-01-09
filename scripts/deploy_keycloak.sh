@@ -76,24 +76,25 @@ if ! wait_for_kube 600; then
   exit 1
 fi
 
-# Wait for Postgres deployment to be ready
+# Wait for Postgres pods to be ready (supports StatefulSet or Deployment)
 wait_for_postgres() {
   local timeout=${1:-300}
-  local start=$(date +%s)
-  echo "Waiting up to ${timeout}s for Postgres deployment to have Ready replicas..."
-  while true; do
-    READY=$(kubectl --kubeconfig "$KUBECONFIG" -n default get deploy postgres -o jsonpath='{.status.readyReplicas}' 2>/dev/null || echo "0")
-    if [ -n "$READY" ] && [ "$READY" -ge 1 ]; then
-      echo "Postgres deployment has Ready replicas"
-      return 0
+  echo "Waiting up to ${timeout}s for Postgres pods (label app=postgres) to be Ready..."
+  if kubectl --kubeconfig "$KUBECONFIG" -n default wait --for=condition=ready pod -l app=postgres --timeout=${timeout}s >/dev/null 2>&1; then
+    echo "Postgres pods are Ready"
+    return 0
+  else
+    # fallback: check for any pod with the label and describe for debug
+    echo "Postgres pods did not become ready within ${timeout}s" >&2
+    kubectl --kubeconfig "$KUBECONFIG" -n default get pods -l app=postgres -o wide || true
+    POD=$(kubectl --kubeconfig "$KUBECONFIG" -n default get pods -l app=postgres -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || true)
+    if [ -n "$POD" ]; then
+      echo "=== Logs for $POD ===" >&2
+      kubectl --kubeconfig "$KUBECONFIG" -n default logs "$POD" --tail=200 >&2 || true
+      kubectl --kubeconfig "$KUBECONFIG" -n default describe pod "$POD" || true
     fi
-    now=$(date +%s)
-    if [ $((now - start)) -ge $timeout ]; then
-      echo "Timed out waiting for Postgres to be Ready" >&2
-      return 1
-    fi
-    sleep 5
-  done
+    return 1
+  fi
 }
 
 if ! wait_for_postgres 300; then
