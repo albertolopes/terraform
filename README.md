@@ -138,17 +138,3 @@ Após a conclusão do `apply`, os serviços estarão disponíveis nos seguintes 
 - **Minio API (S3):** `http://minio.moedabot.xyz`
 
 **Nota:** Para que esses domínios funcionem, você precisa ter um registro DNS curinga (`A` record com nome `*`) no seu provedor de DNS (Cloudflare) apontando para o endereço de IP público do seu servidor.
-
-## 5. Solução de Problemas Comuns
-
-### Erro de "Permission Denied" ao Conectar ao Docker
-
-Se você ver um erro como `permission denied while trying to connect to the Docker daemon socket`, isso significa que a sua sessão de terminal atual não tem as permissões corretas para usar o Docker, mesmo que a instalação tenha sido bem-sucedida.
-
-**Solução 1 (Recomendada):** Faça logout do servidor e faça login novamente. Esta é a maneira mais limpa de garantir que seu usuário seja adicionado ao grupo `docker`.
-
-**Solução 2 (Rápida):** Se você não quiser fazer logout, pode iniciar um novo shell com as permissões corretas executando o seguinte comando. Depois, execute seus comandos do Terraform neste mesmo terminal.
-
-```sh
-newgrp docker
-```
