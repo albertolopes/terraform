@@ -34,10 +34,10 @@ if k3d cluster list --no-headers | awk '{print $1}' | grep -xq "$name"; then
   fi
 fi
 
-# Build base command with stable API port, listening on all interfaces
+# Build base command with stable API port, listening only on localhost
 API_PORT=6443
 CMD=(k3d cluster create "$name" --wait --servers "$servers" --agents "$agents")
-CMD+=(--api-port "0.0.0.0:$API_PORT") # Listen on all interfaces
+CMD+=(--api-port "127.0.0.1:$API_PORT")
 
 # Kubelet and Traefik args
 CMD+=(--k3s-arg "--kubelet-arg=--max-pods=$maxpods@server:0")
@@ -60,7 +60,7 @@ k3d kubeconfig get "$name" > "$KUBECONFIG_PATH"
 chmod 600 "$KUBECONFIG_PATH"
 echo "Wrote kubeconfig to $KUBECONFIG_PATH"
 
-# Wait for the cluster API to be fully ready using the initial kubeconfig
+# Wait for the cluster API to be fully ready
 echo "Waiting for Kubernetes API to be ready..."
 timeout=120
 step=5
@@ -76,10 +76,3 @@ while ! kubectl --kubeconfig "$KUBECONFIG_PATH" get nodes >/dev/null 2>&1; do
 done
 
 echo "Cluster '$name' created and API is ready."
-
-# --- FIX KUBECONFIG FOR EXTERNAL ACCESS (AFTER API is ready) ---
-# Get the server's actual LAN IP
-SERVER_IP=$(hostname -I | awk '{print $1}')
-# Replace the 0.0.0.0 address in the kubeconfig with the real IP
-sed -i "s/0.0.0.0/$SERVER_IP/" "$KUBECONFIG_PATH"
-echo "Kubeconfig updated for external access via IP: $SERVER_IP"
