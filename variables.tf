@@ -1,41 +1,11 @@
-variable "kubeconfig_path" {
+variable "domain_name" {
+  description = "The base domain name for the services."
   type        = string
-  description = "Path to kubeconfig file for the kubernetes provider. If empty, ~/.kube/config will be used."
-  default     = ""
+  default     = "moedabot.xyz"
 }
 
-variable "container_name" {
+variable "keycloak_admin_user" {
+  description = "The admin username for Keycloak."
   type        = string
-  description = "Name for the local Docker container created by Terraform"
-  default     = "tutorial"
-}
-
-variable "nginx_image" {
-  type        = string
-  description = "Docker image for nginx deployment (can override via -var or terraform.tfvars)"
-  default     = "nginx:1.29.4-alpine"
-}
-
-variable "postgres_image" {
-  type        = string
-  description = "Docker image for postgres deployment (overrideable)"
-  default     = "postgres:15"
-}
-
-variable "postgres_host_path" {
-  type        = string
-  description = "Absolute host path to use for Postgres hostPath PV (used when use_local_path is false). If empty, repo-relative ./volume/postgres-data will be used."
-  default     = ""
-}
-
-variable "use_local_path" {
-  type        = bool
-  description = "When true, use the local-path StorageClass (dynamic) instead of creating a hostPath PV"
-  default     = true
-}
-
-variable "enable_cleanup" {
-  type        = bool
-  description = "When true the cleanup_postgres_pv null_resource will run and delete postgres PV/PVC. Default false to avoid accidental deletion during normal terraform apply."
-  default     = false
+  default     = "admin"
 }

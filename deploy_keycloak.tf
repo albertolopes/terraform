@@ -42,7 +42,7 @@ resource "kubernetes_deployment_v1" "keycloak" {
           }
           env {
             name  = "KC_HOSTNAME"
-            value = "keycloak.localhost" # Required for production mode
+            value = "keycloak.${var.domain_name}"
           }
           env {
             name  = "KC_DB"

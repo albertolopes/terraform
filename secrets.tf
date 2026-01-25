@@ -15,8 +15,8 @@ resource "kubernetes_secret_v1" "keycloak_admin" {
     name = "keycloak-admin"
   }
   data = {
-    "auth.adminUser"     = "admin"
-    "auth.adminPassword" = "admin"
+    "auth.adminUser"     = var.keycloak_admin_user
+    "auth.adminPassword" = random_password.keycloak_admin.result
   }
 }
 
@@ -26,6 +26,6 @@ resource "kubernetes_secret_v1" "postgres_credentials" {
     name = "postgres-credentials"
   }
   data = {
-    "postgresql.auth.postgresPassword" = "postgres"
+    "postgresql.auth.postgresPassword" = random_password.postgres.result
   }
 }

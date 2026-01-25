@@ -21,7 +21,7 @@ resource "kubernetes_ingress_v1" "main_ingress" {
   }
   spec {
     rule {
-      host = "minio.localhost"
+      host = "minio.${var.domain_name}"
       http {
         path {
           path      = "/"
@@ -38,7 +38,7 @@ resource "kubernetes_ingress_v1" "main_ingress" {
       }
     }
     rule {
-      host = "minio-console.localhost"
+      host = "minio-console.${var.domain_name}"
       http {
         path {
           path      = "/"
@@ -55,7 +55,7 @@ resource "kubernetes_ingress_v1" "main_ingress" {
       }
     }
     rule {
-      host = "keycloak.localhost"
+      host = "keycloak.${var.domain_name}"
       http {
         path {
           path      = "/"
