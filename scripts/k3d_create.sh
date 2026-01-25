@@ -4,13 +4,14 @@ set -euo pipefail
 CLUSTER_CONFIG=${CLUSTER_CONFIG:-"$(pwd)/cluster.yaml"}
 DRY_RUN=${DRY_RUN:-0}
 WORKDIR=$(pwd)
+KUBECONFIG_PATH="$WORKDIR/.k3d_kubeconfig"
 
 if [ ! -f "$CLUSTER_CONFIG" ]; then
   echo "Cluster config not found: $CLUSTER_CONFIG" >&2
   exit 1
 fi
 
-# simple YAML parsing (works for the simple structure we have)
+# simple YAML parsing
 name=$(awk -F":" '/^name:/ {gsub(/"| /, "", $2); print $2; exit}' "$CLUSTER_CONFIG" || true)
 servers=$(awk -F":" '/^servers:/ {gsub(/ /, "", $2); print $2; exit}' "$CLUSTER_CONFIG" || true)
 agents=$(awk -F":" '/^agents:/ {gsub(/ /, "", $2); print $2; exit}' "$CLUSTER_CONFIG" || true)
@@ -20,72 +21,64 @@ name=${name:-mycluster}
 servers=${servers:-1}
 agents=${agents:-0}
 maxpods=${maxpods:-110}
-
-# allow override via env var
 name=${K3D_CLUSTER_NAME:-$name}
 
-# Build base command
-CMD=(k3d cluster create "$name" --wait --servers "$servers" --agents "$agents")
-# kubelet max-pods on server and agent
-CMD+=(--k3s-arg "--kubelet-arg=--max-pods=$maxpods@server:0" --k3s-arg "--kubelet-arg=--max-pods=$maxpods@agent:0")
+# If cluster already exists, handle it
+if k3d cluster list --no-headers | awk '{print $1}' | grep -xq "$name"; then
+  if [ "${FORCE_RECREATE:-0}" = "1" ] || [ "${FORCE_RECREATE:-false}" = "true" ]; then
+    echo "FORCE_RECREATE set — deleting existing cluster $name"
+    k3d cluster delete "$name" || true
+  else
+    echo "Cluster $name already exists: skipping creation."
+    # Ensure kubeconfig exists and is valid
+    if ! k3d kubeconfig get "$name" > "$KUBECONFIG_PATH"; then
+      echo "Failed to get kubeconfig for existing cluster." >&2
+      exit 1
+    fi
+    echo "Kubeconfig for existing cluster is present."
+    exit 0
+  fi
+fi
 
-# Optionally mount repo volume directories into all nodes so hostPath PVs map to host
+# Build base command with stable API port
+API_PORT=6443
+CMD=(k3d cluster create "$name" --wait --servers "$servers" --agents "$agents")
+CMD+=(--api-port "127.0.0.1:$API_PORT")
+
+# Kubelet and Traefik args
+CMD+=(--k3s-arg "--kubelet-arg=--max-pods=$maxpods@server:0")
+CMD+=(--k3s-arg "--disable=traefik@server:0")
+
+# Expose HTTP/HTTPS ports
+CMD+=(--port "80:80@loadbalancer" --port "443:443@loadbalancer")
+
+# Mount volumes
 VOLUME_DIRS=("$WORKDIR/volume/postgres" "$WORKDIR/volume/minio" "$WORKDIR/volume/nginx")
 for d in "${VOLUME_DIRS[@]}"; do
-  # ensure host dir exists
-  if [ ! -d "$d" ]; then
-    mkdir -p "$d" || true
-  fi
-  # add mount to all nodes
+  mkdir -p "$d" || true
   CMD+=(--volume "$d:$d@all")
 done
 
-# Expose HTTP/HTTPS ports on loadbalancer
-CMD+=(--port "80:80@loadbalancer" --port "443:443@loadbalancer")
-
-# Show command
-echo "k3d create command to run:"
-printf '%s ' "${CMD[@]}"
-echo
-
-if [ "$DRY_RUN" = "1" ] || [ "$DRY_RUN" = "true" ]; then
-  echo "DRY_RUN=yes — not executing"
-  exit 0
-fi
-
-# If cluster already exists, optionally delete/recreate when FORCE_RECREATE is set
-if command -v k3d >/dev/null 2>&1; then
-  if k3d cluster list --no-headers | awk '{print $1}' | grep -xq "$name"; then
-    if [ "${FORCE_RECREATE:-0}" = "1" ] || [ "${FORCE_RECREATE:-false}" = "true" ]; then
-      echo "FORCE_RECREATE set — deleting existing cluster $name"
-      k3d cluster delete "$name" || true
-    else
-      echo "Cluster $name already exists: skipping creation"
-      # Export kubeconfig for use by other scripts
-      if k3d kubeconfig get "$name" >/dev/null 2>&1; then
-        k3d kubeconfig get "$name" > "$WORKDIR/.k3d_kubeconfig" || true
-        chmod 600 "$WORKDIR/.k3d_kubeconfig" || true
-        echo "Wrote kubeconfig to $WORKDIR/.k3d_kubeconfig"
-      fi
-      echo "Applying docker resource hints (best-effort)"
-      SERVER_LB="k3d-${name}-serverlb"
-      if docker ps --format '{{.Names}}' | grep -q "^${SERVER_LB}$"; then
-        docker update --cpus 1.0 --memory 2g --memory-swap 2g "${SERVER_LB}" || true
-      fi
-      exit 0
-    fi
-  fi
-fi
-
-# Execute the command
+# Execute and export kubeconfig
 echo "Executing: ${CMD[*]}"
 "${CMD[@]}"
+k3d kubeconfig get "$name" > "$KUBECONFIG_PATH"
+chmod 600 "$KUBECONFIG_PATH"
+echo "Wrote kubeconfig to $KUBECONFIG_PATH"
 
-# Export kubeconfig
-if k3d kubeconfig get "$name" >/dev/null 2>&1; then
-  k3d kubeconfig get "$name" > "$WORKDIR/.k3d_kubeconfig"
-  chmod 600 "$WORKDIR/.k3d_kubeconfig" || true
-  echo "Wrote kubeconfig to $WORKDIR/.k3d_kubeconfig"
-fi
+# Wait for the cluster API to be fully ready
+echo "Waiting for Kubernetes API to be ready..."
+timeout=120
+step=5
+elapsed=0
+while ! kubectl --kubeconfig "$KUBECONFIG_PATH" get nodes >/dev/null 2>&1; do
+  if [ "$elapsed" -ge "$timeout" ]; then
+    echo "Timed out waiting for Kubernetes API." >&2
+    exit 1
+  fi
+  echo "API not ready yet, waiting ${step}s..."
+  sleep ${step}
+  elapsed=$((elapsed + step))
+done
 
-echo "Cluster '$name' created"
+echo "Cluster '$name' created and API is ready."

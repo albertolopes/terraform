@@ -1,15 +1,3 @@
-# Ensure the nginx image is pulled locally and imported into the k3d cluster before deploying
-resource "null_resource" "pull_nginx" {
-  provisioner "local-exec" {
-    environment = {
-      IMAGE = var.nginx_image
-    }
-
-    command = "bash ${path.module}/scripts/image_import_wrapper.sh"
-    interpreter = ["/bin/bash", "-c"]
-  }
-
-  triggers = {
-    image = var.nginx_image
-  }
-}
+# This file is now obsolete and can be deleted.
+# The image pre-loading strategy was found to be unreliable due to k3d bugs.
+# The cluster nodes will now pull images directly.

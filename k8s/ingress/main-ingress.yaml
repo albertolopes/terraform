@@ -1,0 +1,2 @@
+# This manifest is now obsolete and can be deleted.
+# The main ingress is now managed by a kubernetes_ingress_v1 resource in ingress.tf.

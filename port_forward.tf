@@ -1,6 +1,6 @@
 # Port-forward helper resource
 resource "null_resource" "port_forward" {
-  depends_on = [null_resource.deploy_nginx]
+  depends_on = [kubernetes_service_v1.nginx]
 
   provisioner "local-exec" {
     environment = {

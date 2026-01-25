@@ -1,55 +1,75 @@
-# install ingress-nginx controller and create Ingress
-resource "null_resource" "install_ingress" {
-  depends_on = [null_resource.k3d_cluster, null_resource.remove_traefik]
-
-  provisioner "local-exec" {
-    environment = {
-      MODULE_DIR = "${path.module}"
-      KUBECONFIG  = "${path.module}/.k3d_kubeconfig"
-    }
-
-    command = "bash ${path.module}/scripts/install_ingress.sh"
-    interpreter = ["/bin/bash", "-c"]
-  }
-
-  triggers = {
-    ingress_marker = timestamp()
-  }
+resource "helm_release" "ingress_nginx" {
+  depends_on       = [null_resource.k3d_cluster]
+  name             = "ingress-nginx"
+  repository       = "https://kubernetes.github.io/ingress-nginx"
+  chart            = "ingress-nginx"
+  namespace        = "ingress-nginx"
+  create_namespace = true
+  wait             = true
+  timeout          = 300
+  cleanup_on_fail  = true
 }
 
-# Ensure Traefik is removed if present (idempotent)
-resource "null_resource" "remove_traefik" {
-  depends_on = [null_resource.k3d_cluster]
-  provisioner "local-exec" {
-    interpreter = ["/bin/bash", "-c"]
-    command = <<EOT
-set -euo pipefail
-KUBECONFIG="${path.module}/.k3d_kubeconfig"
-NS=kube-system
-# try helm uninstall first
-if command -v helm >/dev/null 2>&1; then
-  helm -n $NS uninstall traefik --wait --timeout 30s || true
-fi
-# delete common traefik resources by label/name
-kubectl --kubeconfig "$KUBECONFIG" -n $NS delete deployment,service,daemonset,replicaset,job,cronjob -l app=traefik --ignore-not-found=true || true
-kubectl --kubeconfig "$KUBECONFIG" -n $NS delete deployment traefik --ignore-not-found=true || true
-kubectl --kubeconfig "$KUBECONFIG" -n $NS delete svc traefik --ignore-not-found=true || true
-# delete any helm-install-traefik or traefik pods
-kubectl --kubeconfig "$KUBECONFIG" -n $NS get pods -o name 2>/dev/null | grep -Ei 'traefik|helm-install-traefik' | xargs -r -n1 kubectl --kubeconfig "$KUBECONFIG" -n $NS delete --ignore-not-found=true || true
-# delete any svclb daemonsets/pods referencing traefik
-kubectl --kubeconfig "$KUBECONFIG" -n $NS get daemonset -o name 2>/dev/null | grep -i svclb || true | xargs -r -n1 kubectl --kubeconfig "$KUBECONFIG" -n $NS delete --ignore-not-found=true || true
-kubectl --kubeconfig "$KUBECONFIG" -n $NS get pods -o name 2>/dev/null | grep -i svclb || true | xargs -r -n1 kubectl --kubeconfig "$KUBECONFIG" -n $NS delete --ignore-not-found=true || true
-
-# quick wait loop (max 60s) for any traefik/helm-install pods to disappear
-for i in {1..12}; do
-  sleep 5
-  if ! kubectl --kubeconfig "$KUBECONFIG" -n $NS get pods -o name 2>/dev/null | grep -Ei 'traefik|helm-install-traefik|svclb-traefik' >/dev/null 2>&1; then
-    echo "Traefik artifacts removed"
-    break
-  fi
-  echo "Waiting for Traefik artifacts to be removed... ($((i*5))s)"
-done
-EOT
+resource "kubernetes_ingress_v1" "main_ingress" {
+  depends_on = [helm_release.ingress_nginx]
+  metadata {
+    name = "main-ingress"
+    annotations = {
+      "kubernetes.io/ingress.class" = "nginx"
+      "nginx.ingress.kubernetes.io/rewrite-target" = "/"
+    }
   }
-  triggers = { ts = timestamp() }
+  spec {
+    rule {
+      host = "minio.localhost"
+      http {
+        path {
+          path      = "/"
+          path_type = "Prefix"
+          backend {
+            service {
+              name = "minio"
+              port {
+                number = 9000
+              }
+            }
+          }
+        }
+      }
+    }
+    rule {
+      host = "minio-console.localhost"
+      http {
+        path {
+          path      = "/"
+          path_type = "Prefix"
+          backend {
+            service {
+              name = "minio"
+              port {
+                number = 9001
+              }
+            }
+          }
+        }
+      }
+    }
+    rule {
+      host = "keycloak.localhost"
+      http {
+        path {
+          path      = "/"
+          path_type = "Prefix"
+          backend {
+            service {
+              name = "keycloak"
+              port {
+                number = 8080
+              }
+            }
+          }
+        }
+      }
+    }
+  }
 }
