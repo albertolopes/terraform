@@ -77,9 +77,11 @@ done
 
 echo "Cluster '$name' created and API is ready."
 
-# --- FIX KUBECONFIG FOR EXTERNAL ACCESS (THE SIMPLEST WAY) ---
+# --- FIX KUBECONFIG FOR EXTERNAL ACCESS (THE ROBUST WAY) ---
 # Get the server's actual LAN IP
 SERVER_IP=$(hostname -I | awk '{print $1}')
-# Replace the 127.0.0.1 address in the kubeconfig with the real IP
-sed -i "s/127.0.0.1/$SERVER_IP/" "$KUBECONFIG_PATH"
+# Get the cluster name from the kubeconfig
+CLUSTER_NAME=$(kubectl --kubeconfig "$KUBECONFIG_PATH" config view -o jsonpath='{.clusters[0].name}')
+# Use kubectl to set the server address correctly
+kubectl --kubeconfig "$KUBECONFIG_PATH" config set-cluster "$CLUSTER_NAME" --server="https://$SERVER_IP:$API_PORT"
 echo "Kubeconfig updated for external access via IP: $SERVER_IP"
