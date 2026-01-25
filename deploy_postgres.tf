@@ -7,6 +7,8 @@ resource "helm_release" "postgres" {
   chart            = "postgresql"
   namespace        = "default"
   cleanup_on_fail  = true
+  wait             = true
+  timeout          = 600
 
   set = [
     # Override the release name to ensure the service is just "postgres"
@@ -18,6 +20,11 @@ resource "helm_release" "postgres" {
     {
       name  = "auth.postgresPassword"
       value = kubernetes_secret_v1.postgres_credentials.data["postgresql.auth.postgresPassword"]
+    },
+    # Set the initial database to be created
+    {
+      name  = "auth.database"
+      value = "keycloak"
     },
     # Configure replication: 1 primary, 1 read-only replica
     {

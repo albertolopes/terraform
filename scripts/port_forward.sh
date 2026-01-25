@@ -1,33 +1,39 @@
 #!/usr/bin/env bash
 set -euo pipefail
+
 KUBECONFIG=${KUBECONFIG:-$PWD/.k3d_kubeconfig}
 MODULE_DIR=${MODULE_DIR:-$PWD}
+PID_DIR="$MODULE_DIR/.pids"
+mkdir -p "$PID_DIR"
 
-# check if localhost:30080 is already listening
-if ss -lnt | grep -q ':30080\b'; then
-  echo "localhost:30080 already listening"
-  exit 0
-fi
-# try connecting to loadbalancer container mapping
-if docker ps --format '{{.Names}} {{.Ports}}' | grep -q 'k3d-mycluster-serverlb.*30080'; then
-  echo "Loadbalancer publishes 30080 on host, no port-forward needed"
-  exit 0
-fi
-# start kubectl port-forward in background and write pid
-PIDFILE="$MODULE_DIR/.k3d_port_forward.pid"
-# if existing pidfile, ensure process not running
-if [ -f "$PIDFILE" ]; then
-  OLDPID=$(cat "$PIDFILE") || true
-  if [ -n "$OLDPID" ] && kill -0 "$OLDPID" 2>/dev/null; then
-    echo "port-forward already running with PID $OLDPID"
-    exit 0
-  else
-    rm -f "$PIDFILE"
+# Function to start port-forward if not already running
+start_port_forward() {
+  local service_name=$1
+  local local_port=$2
+  local remote_port=$3
+  local pid_file="$PID_DIR/${service_name}.pid"
+
+  # Check if port is already in use
+  if lsof -i :$local_port >/dev/null; then
+    echo "Port $local_port is already in use. Assuming port-forward is running."
+    return
   fi
-fi
-# run port-forward in background
-nohup kubectl --kubeconfig "$KUBECONFIG" port-forward svc/nginx-service 30080:80 >/dev/null 2>&1 &
-PF_PID=$!
-echo $PF_PID > "$PIDFILE"
-echo "Started kubectl port-forward with PID $PF_PID"
 
+  # Check for existing PID file
+  if [ -f "$pid_file" ] && ps -p $(cat "$pid_file") > /dev/null; then
+    echo "Port-forward for $service_name already running with PID $(cat "$pid_file")."
+    return
+  fi
+
+  echo "Starting port-forward for $service_name on port $local_port..."
+  nohup kubectl --kubeconfig "$KUBECONFIG" port-forward "svc/$service_name" "$local_port:$remote_port" >/dev/null 2>&1 &
+  local pf_pid=$!
+  echo $pf_pid > "$pid_file"
+  echo "Started $service_name port-forward with PID $pf_pid."
+}
+
+# Start port-forwards
+start_port_forward "nginx" 8081 80
+start_port_forward "postgres" 5432 5432
+
+echo "Port-forwarding setup complete."

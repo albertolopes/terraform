@@ -11,7 +11,7 @@ resource "helm_release" "minio" {
   set = [
     {
       name  = "mode"
-      value = "distributed"
+      value = "standalone"
     },
     {
       name  = "replicas"
@@ -27,7 +27,7 @@ resource "helm_release" "minio" {
     },
     {
       name  = "resources.requests.memory"
-      value = "512Mi" # Increased memory for distributed mode
+      value = "256Mi" # Reduced memory for standalone mode
     },
     {
       name  = "ingress.enabled"

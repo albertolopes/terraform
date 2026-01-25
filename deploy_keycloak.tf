@@ -4,7 +4,7 @@ resource "kubernetes_deployment_v1" "keycloak" {
     name = "keycloak"
   }
   spec {
-    replicas = 2
+    replicas = 1 # Reduced to 1 replica for stability
     selector {
       match_labels = {
         app = "keycloak"
@@ -20,7 +20,7 @@ resource "kubernetes_deployment_v1" "keycloak" {
         container {
           name  = "keycloak"
           image = "quay.io/keycloak/keycloak:25.0.0"
-          args  = ["start-dev"]
+          args  = ["start"] # Changed to 'start' for production mode
 
           env {
             name = "KEYCLOAK_ADMIN"
@@ -39,6 +39,10 @@ resource "kubernetes_deployment_v1" "keycloak" {
                 key  = "auth.adminPassword"
               }
             }
+          }
+          env {
+            name  = "KC_HOSTNAME"
+            value = "keycloak.localhost" # Required for production mode
           }
           env {
             name  = "KC_DB"
@@ -62,12 +66,21 @@ resource "kubernetes_deployment_v1" "keycloak" {
             }
           }
           env {
+            name  = "KC_DB_DATABASE"
+            value = "keycloak" # Connect to the correct database
+          }
+          env {
             name  = "KC_PROXY"
             value = "edge"
           }
 
           port {
+            name           = "http"
             container_port = 8080
+          }
+          port {
+            name           = "management"
+            container_port = 9000
           }
 
           resources {
@@ -96,6 +109,7 @@ resource "kubernetes_service_v1" "keycloak" {
       app = "keycloak"
     }
     port {
+      name        = "http"
       port        = 8080
       target_port = 8080
     }

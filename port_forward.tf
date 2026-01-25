@@ -1,6 +1,9 @@
 # Port-forward helper resource
 resource "null_resource" "port_forward" {
-  depends_on = [kubernetes_service_v1.nginx]
+  depends_on = [
+    kubernetes_service_v1.nginx,
+    helm_release.postgres
+  ]
 
   provisioner "local-exec" {
     environment = {
