@@ -30,12 +30,6 @@ if k3d cluster list --no-headers | awk '{print $1}' | grep -xq "$name"; then
     k3d cluster delete "$name" || true
   else
     echo "Cluster $name already exists: skipping creation."
-    # Ensure kubeconfig exists and is valid
-    if ! k3d kubeconfig get "$name" > "$KUBECONFIG_PATH"; then
-      echo "Failed to get kubeconfig for existing cluster." >&2
-      exit 1
-    fi
-    echo "Kubeconfig for existing cluster is present."
     exit 0
   fi
 fi
