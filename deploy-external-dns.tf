@@ -5,6 +5,8 @@ resource "helm_release" "external_dns" {
   repository = "https://kubernetes-sigs.github.io/external-dns/"
   chart      = "external-dns"
   namespace  = "default"
+  wait       = true
+  timeout    = 300
 
   set = [
     {
@@ -12,20 +14,25 @@ resource "helm_release" "external_dns" {
       value = "cloudflare"
     },
     {
-      name  = "cloudflare.apiToken"
-      value = var.cloudflare_api_token
-    },
-    {
       name  = "domainFilters[0]"
       value = var.domain_name
     },
     {
       name  = "policy"
-      value = "sync" # This will sync DNS records with your Ingress resources
+      value = "sync"
     },
     {
       name  = "logLevel"
-      value = "debug" # Useful for initial setup
+      value = "debug"
+    },
+    # This tells the provider to use the API Token for authentication
+    {
+      name  = "cloudflare.apiTokenSecretRef.name"
+      value = kubernetes_secret_v1.cloudflare_api_token.metadata[0].name
+    },
+    {
+      name  = "cloudflare.apiTokenSecretRef.key"
+      value = "api-token"
     }
   ]
 }
