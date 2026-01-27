@@ -138,3 +138,4 @@ Após a conclusão do `apply`, os serviços estarão disponíveis nos seguintes 
 - **Minio API (S3):** `http://minio.moedabot.xyz`
 
 **Nota:** Para que esses domínios funcionem, você precisa ter um registro DNS curinga (`A` record com nome `*`) no seu provedor de DNS (Cloudflare) apontando para o endereço de IP público do seu servidor.
+newgrp docker

@@ -77,13 +77,18 @@ done
 
 echo "Cluster '$name' created and API is ready."
 
-# --- AUTOMATE KUBECONFIG FIX FOR EXTERNAL ACCESS ---
-# Get the server's actual LAN IP
-SERVER_IP=$(hostname -I | awk '{print $1}')
+# --- AUTOMATE KUBECONFIG FIX FOR EXTERNAL ACCESS (THE FINAL, CORRECT WAY) ---
+# Get the server's primary non-localhost IP address
+SERVER_IP=$(ip -4 addr show | grep -oP '(?<=inet\s)\d+(\.\d+){3}' | grep -v '127.0.0.1' | head -n 1)
+if [ -z "$SERVER_IP" ]; then
+  echo "Could not determine server's LAN IP. Kubeconfig will not be modified." >&2
+  exit 1
+fi
+
 # Get the cluster name from the kubeconfig
 CLUSTER_NAME=$(kubectl --kubeconfig "$KUBECONFIG_PATH" config view -o jsonpath='{.clusters[0].name}')
 
-# Use kubectl to set the server address and skip TLS verification
+# Use kubectl to set the server address AND skip TLS verification
 echo "Updating kubeconfig for external access..."
 kubectl --kubeconfig "$KUBECONFIG_PATH" config set-cluster "$CLUSTER_NAME" \
   --server="https://$SERVER_IP:$API_PORT" \
