@@ -11,6 +11,13 @@ variable "cloudflare_api_token" {
   # No default value, this must be provided
 }
 
+variable "cloudflare_email" {
+  description = "The email address associated with the Cloudflare account."
+  type        = string
+  sensitive   = true
+  # No default value, this must be provided
+}
+
 # --- Usernames ---
 variable "keycloak_admin_user" {
   description = "The admin username for Keycloak."

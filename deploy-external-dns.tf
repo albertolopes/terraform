@@ -33,6 +33,11 @@ resource "helm_release" "external_dns" {
     {
       name  = "cloudflare.apiTokenSecretRef.key"
       value = "api-token"
+    },
+    # Workaround for older chart versions that require email even with API Token
+    {
+      name  = "cloudflare.email"
+      value = var.cloudflare_email
     }
   ]
 }
