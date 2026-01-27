@@ -23,22 +23,12 @@ resource "kubernetes_deployment_v1" "keycloak" {
           args  = ["start"] # Changed to 'start' for production mode
 
           env {
-            name = "KEYCLOAK_ADMIN"
-            value_from {
-              secret_key_ref {
-                name = kubernetes_secret_v1.keycloak_admin.metadata[0].name
-                key  = "auth.adminUser"
-              }
-            }
+            name  = "KEYCLOAK_ADMIN"
+            value = var.keycloak_admin_user
           }
           env {
-            name = "KEYCLOAK_ADMIN_PASSWORD"
-            value_from {
-              secret_key_ref {
-                name = kubernetes_secret_v1.keycloak_admin.metadata[0].name
-                key  = "auth.adminPassword"
-              }
-            }
+            name  = "KEYCLOAK_ADMIN_PASSWORD"
+            value = random_password.keycloak_admin.result
           }
           env {
             name  = "KC_HOSTNAME"
@@ -54,16 +44,11 @@ resource "kubernetes_deployment_v1" "keycloak" {
           }
           env {
             name  = "KC_DB_USERNAME"
-            value = "postgres"
+            value = var.postgres_user
           }
           env {
-            name = "KC_DB_PASSWORD"
-            value_from {
-              secret_key_ref {
-                name = kubernetes_secret_v1.postgres_credentials.metadata[0].name
-                key  = "postgresql.auth.postgresPassword"
-              }
-            }
+            name  = "KC_DB_PASSWORD"
+            value = random_password.postgres.result
           }
           env {
             name  = "KC_DB_DATABASE"

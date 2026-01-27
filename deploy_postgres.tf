@@ -11,22 +11,22 @@ resource "helm_release" "postgres" {
   timeout          = 600
 
   set = [
-    # Override the release name to ensure the service is just "postgres"
     {
       name  = "fullnameOverride"
       value = "postgres"
     },
-    # Use the password from our central secrets file
+    {
+      name  = "auth.username"
+      value = var.postgres_user
+    },
     {
       name  = "auth.postgresPassword"
-      value = kubernetes_secret_v1.postgres_credentials.data["postgresql.auth.postgresPassword"]
+      value = random_password.postgres.result
     },
-    # Set the initial database to be created
     {
       name  = "auth.database"
       value = "keycloak"
     },
-    # Configure replication: 1 primary, 1 read-only replica
     {
       name  = "primary.replicaCount"
       value = "1"
@@ -35,7 +35,6 @@ resource "helm_release" "postgres" {
       name  = "readReplicas.replicaCount"
       value = "1"
     },
-    # Adjust resources for a local environment
     {
       name  = "primary.resources.requests.memory"
       value = "256Mi"

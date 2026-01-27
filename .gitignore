@@ -1,62 +1,21 @@
-# Terraform
+# Terraform state and plan files
 *.tfstate
 *.tfstate.*
-.tfplan
-.terraform/
 .terraform.lock.hcl
-*.tfvars
-*.tfvars.json
 
-# Terraform Workspace local files
-.terraform.tfstate
-.terraform.tfstate.backup
+# Crash log files
+crash.log
+crash.*.log
 
-# Kubernetes / kubeconfig
-.kube/
-.kube/config
+# Terraform runtime directory
+.terraform/
+
+# K3d generated files
 .k3d_kubeconfig
-.kubeconfig
+.certs/
 
-# Sensitive / credentials
-*.pem
-*.key
-*.crt
-secrets.yaml
-*.env
-.env
+# Port-forward PID files
+.pids/
 
-# Docker and images and tarballs
-*.tar
-.nginx_image.tar
-.*_image.tar
-docker-compose*.yml
-docker-compose.yaml
-
-docker/
-
-# Logs and temporary
-*.log
-tmp/
-
-# IDE/editor
-.vscode/
-.idea/
-*.swp
-
-# OS
-.DS_Store
-Thumbs.db
-
-# Ignore local volume data (do NOT commit actual data)
+# Persisted data volumes
 volume/
-
-# Node modules if any
-node_modules/
-
-# Git plan outputs
-tfplan
-
-# Other
-*.bak
-*~
-

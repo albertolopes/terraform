@@ -9,3 +9,9 @@ resource "random_password" "postgres" {
   special          = true
   override_special = "!#%&"
 }
+
+resource "random_password" "minio_secret_key" {
+  length           = 16
+  special          = true
+  override_special = "!#%&"
+}

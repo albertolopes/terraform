@@ -4,8 +4,8 @@ resource "kubernetes_secret_v1" "minio_credentials" {
     name = "minio-credentials"
   }
   data = {
-    accesskey = "minio"
-    secretkey = "minio123"
+    accesskey = var.minio_access_key
+    secretkey = random_password.minio_secret_key.result
   }
 }
 
@@ -26,6 +26,7 @@ resource "kubernetes_secret_v1" "postgres_credentials" {
     name = "postgres-credentials"
   }
   data = {
+    "postgresql.auth.username"         = var.postgres_user
     "postgresql.auth.postgresPassword" = random_password.postgres.result
   }
 }
