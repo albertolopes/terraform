@@ -23,16 +23,6 @@ resource "helm_release" "external_dns" {
       name  = "logLevel"
       value = "debug"
     },
-    # CONFIGURAÇÃO PARA GLOBAL API KEY
-    {
-      name  = "cloudflare.apiKey"
-      value = var.cloudflare_api_token  # Sua Global API Key
-    },
-    {
-      name  = "cloudflare.email"
-      value = var.cloudflare_email      # Seu email da conta
-    },
-    # Configurações adicionais recomendadas
     {
       name  = "rbac.create"
       value = "true"
@@ -44,6 +34,23 @@ resource "helm_release" "external_dns" {
     {
       name  = "sources[1]"
       value = "service"
+    },
+    # CONFIGURAÇÃO PARA USAR O SECRET CRIADO
+    {
+      name  = "cloudflare.apiKeyFromSecret"
+      value = "cloudflare-credentials"  # Nome do seu secret
+    },
+    {
+      name  = "cloudflare.apiKeySecretKey"
+      value = "CF_API_KEY"  # Chave dentro do secret
+    },
+    {
+      name  = "cloudflare.emailFromSecret"
+      value = "cloudflare-credentials"  # Mesmo secret
+    },
+    {
+      name  = "cloudflare.emailSecretKey"
+      value = "CF_API_EMAIL"  # Chave dentro do secret
     }
   ]
 }
