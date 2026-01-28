@@ -6,51 +6,26 @@ resource "helm_release" "external_dns" {
   wait       = true
   timeout    = 300
 
-  set = [
-    {
-      name  = "provider"
-      value = "cloudflare"
-    },
-    {
-      name  = "domainFilters[0]"
-      value = "moedabot.xyz"  # Ou var.domain_name se tiver a variável
-    },
-    {
-      name  = "policy"
-      value = "sync"
-    },
-    {
-      name  = "logLevel"
-      value = "debug"
-    },
-    {
-      name  = "rbac.create"
-      value = "true"
-    },
-    {
-      name  = "sources[0]"
-      value = "ingress"
-    },
-    {
-      name  = "sources[1]"
-      value = "service"
-    },
-    # CONFIGURAÇÃO PARA USAR O SECRET
-    {
-      name  = "cloudflare.apiKeyFromSecret"
-      value = "cloudflare-credentials"  # Nome do seu secret
-    },
-    {
-      name  = "cloudflare.apiKeySecretKey"
-      value = "CF_API_KEY"  # Chave dentro do secret
-    },
-    {
-      name  = "cloudflare.emailFromSecret"
-      value = "cloudflare-credentials"  # Mesmo secret
-    },
-    {
-      name  = "cloudflare.emailSecretKey"
-      value = "CF_API_EMAIL"  # Chave dentro do secret
-    }
+  values = [
+    <<-EOT
+    provider: cloudflare
+    domainFilters:
+      - moedabot.xyz
+    policy: sync
+    logLevel: debug
+    rbac:
+      create: true
+    sources:
+      - ingress
+      - service
+
+    # Usa secret existente
+    env:
+      - name: CF_API_TOKEN
+        valueFrom:
+          secretKeyRef:
+            name: cloudflare-credentials
+            key: CF_API_TOKEN
+    EOT
   ]
 }

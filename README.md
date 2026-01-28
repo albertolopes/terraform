@@ -105,3 +105,18 @@ Se você ver um erro como `permission denied while trying to connect to the Dock
 **Solução 1 (Recomendada):** Faça logout do servidor e faça login novamente.
 
 **Solução 2 (Rápida):** Execute `newgrp docker` no seu terminal atual antes de rodar os comandos do Terraform.
+
+
+### External DNS
+# Remova as chaves antigas e deixe apenas CF_API_TOKEN
+kubectl create secret generic cloudflare-credentials \
+--namespace=default \
+--from-literal=CF_API_TOKEN='TOKEN' \
+--dry-run=client -o yaml | kubectl apply -f -
+
+# Verifique o secret
+kubectl get secret cloudflare-credentials -n default -o jsonpath='{.data.CF_API_TOKEN}' | base64 -d
+echo ""
+
+echo 'export TF_VAR_cloudflare_api_token="TOKEN"' >> ~/.bashrc
+source ~/.bashrc
