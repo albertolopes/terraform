@@ -13,7 +13,7 @@ resource "helm_release" "external_dns" {
     },
     {
       name  = "domainFilters[0]"
-      value = var.domain_name  # "moedabot.xyz"
+      value = "moedabot.xyz"  # Ou var.domain_name se tiver a variável
     },
     {
       name  = "policy"
@@ -35,7 +35,7 @@ resource "helm_release" "external_dns" {
       name  = "sources[1]"
       value = "service"
     },
-    # CONFIGURAÇÃO PARA USAR O SECRET CRIADO
+    # CONFIGURAÇÃO PARA USAR O SECRET
     {
       name  = "cloudflare.apiKeyFromSecret"
       value = "cloudflare-credentials"  # Nome do seu secret
