@@ -24,20 +24,14 @@ resource "helm_release" "external_dns" {
     {
       name  = "logLevel"
       value = "debug"
-    },
-    # This tells the provider to use the API Token for authentication
-    {
-      name  = "cloudflare.apiTokenSecretRef.name"
-      value = kubernetes_secret_v1.cloudflare_api_token.metadata[0].name
-    },
-    {
-      name  = "cloudflare.apiTokenSecretRef.key"
-      value = "api-token"
-    },
-    # Workaround for older chart versions that require email even with API Token
-    {
-      name  = "cloudflare.email"
-      value = var.cloudflare_email
     }
+  ]
+
+  values = [
+    <<-EOT
+    extraEnvFrom:
+      - secretRef:
+          name: ${kubernetes_secret_v1.cloudflare_api_token.metadata[0].name}
+    EOT
   ]
 }

@@ -5,7 +5,8 @@ resource "kubernetes_secret_v1" "cloudflare_api_token" {
     namespace = "default"
   }
   data = {
-    # The external-dns chart expects the secret key to be 'api-token'
-    "api-token" = var.cloudflare_api_token
+    # These are the environment variables that external-dns expects
+    "CF_API_TOKEN" = var.cloudflare_api_token
+    "CF_API_EMAIL" = var.cloudflare_email
   }
 }
