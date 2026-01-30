@@ -1,11 +1,12 @@
-resource "kubernetes_secret_v1" "cloudflare_api_token" {
+resource "kubernetes_secret_v1" "cloudflare_credentials" {
   depends_on = [null_resource.k3d_cluster]
   metadata {
-    name      = "cloudflare-api-token"
+    name      = "cloudflare-credentials"
     namespace = "default"
   }
   data = {
-    # This is the environment variable that external-dns expects for the token
-    "CF_API_TOKEN" = var.cloudflare_api_token
+    # These are the environment variables that external-dns expects for API Key auth
+    "CF_API_KEY"   = var.cloudflare_api_key
+    "CF_API_EMAIL" = var.cloudflare_email
   }
 }

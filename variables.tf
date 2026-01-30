@@ -4,11 +4,16 @@ variable "domain_name" {
   default     = "moedabot.xyz"
 }
 
-variable "cloudflare_api_token" {
-  description = "API Token for Cloudflare to allow ExternalDNS to manage DNS records."
+variable "cloudflare_email" {
+  description = "The email address associated with the Cloudflare account."
   type        = string
   sensitive   = true
-  # No default value, this must be provided
+}
+
+variable "cloudflare_api_key" {
+  description = "The Global API Key for the Cloudflare account."
+  type        = string
+  sensitive   = true
 }
 
 # --- Usernames ---
