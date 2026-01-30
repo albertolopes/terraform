@@ -15,12 +15,13 @@ resource "helm_release" "postgres" {
       name  = "fullnameOverride"
       value = "postgres"
     },
+    # Use 'keycloak' as the user and database, matching the Docker Compose setup
     {
       name  = "auth.username"
-      value = var.postgres_user
+      value = "keycloak"
     },
     {
-      name  = "auth.postgresPassword"
+      name  = "auth.password"
       value = random_password.postgres.result
     },
     {

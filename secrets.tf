@@ -26,7 +26,9 @@ resource "kubernetes_secret_v1" "postgres_credentials" {
     name = "postgres-credentials"
   }
   data = {
-    "postgresql.auth.username"         = var.postgres_user
+    # This matches the user created in the postgres helm chart
+    "postgresql.auth.username"         = "keycloak"
+    "postgresql.auth.password"         = random_password.postgres.result
     "postgresql.auth.postgresPassword" = random_password.postgres.result
   }
 }

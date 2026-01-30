@@ -58,8 +58,8 @@ spec:
           fi
         resources:
           requests:
-            cpu: "100m"
-            memory: "2Gi"
+            cpu: "200m"
+            memory: "3Gi"
         volumeMounts: []
       containers:
       - name: keycloak

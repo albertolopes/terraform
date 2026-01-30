@@ -16,10 +16,10 @@ resource "kubernetes_ingress_v1" "main_ingress" {
     name = "main-ingress"
     annotations = {
       "kubernetes.io/ingress.class" = "nginx"
-      "nginx.ingress.kubernetes.io/rewrite-target" = "/"
     }
   }
   spec {
+    ingress_class_name = "nginx"
     rule {
       host = "minio.${var.domain_name}"
       http {
@@ -54,6 +54,26 @@ resource "kubernetes_ingress_v1" "main_ingress" {
         }
       }
     }
+  }
+}
+
+resource "kubernetes_ingress_v1" "keycloak_ingress" {
+  depends_on = [kubernetes_service_v1.keycloak]
+
+  metadata {
+    name = "keycloak-ingress"
+    annotations = {
+      "nginx.ingress.kubernetes.io/proxy-buffer-size"    = "128k"
+      "nginx.ingress.kubernetes.io/proxy-buffers-number" = "4"
+      "nginx.ingress.kubernetes.io/proxy-read-timeout"   = "900"
+      "nginx.ingress.kubernetes.io/proxy-send-timeout"   = "900"
+      "nginx.ingress.kubernetes.io/ssl-redirect"         = "false"
+    }
+  }
+
+  spec {
+    ingress_class_name = "nginx"
+
     rule {
       host = "keycloak.${var.domain_name}"
       http {

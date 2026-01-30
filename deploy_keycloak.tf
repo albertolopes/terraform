@@ -4,7 +4,7 @@ resource "kubernetes_deployment_v1" "keycloak" {
     name = "keycloak"
   }
   spec {
-    replicas = 1 # Reduced to 1 replica for stability
+    replicas = 1
     selector {
       match_labels = {
         app = "keycloak"
@@ -19,8 +19,8 @@ resource "kubernetes_deployment_v1" "keycloak" {
       spec {
         container {
           name  = "keycloak"
-          image = "quay.io/keycloak/keycloak:25.0.0"
-          args  = ["start"] # Changed to 'start' for production mode
+          image = "quay.io/keycloak/keycloak:latest"
+          args  = ["start"] # Removido '--optimized' para permitir o build na primeira inicialização
 
           env {
             name  = "KEYCLOAK_ADMIN"
@@ -35,28 +35,44 @@ resource "kubernetes_deployment_v1" "keycloak" {
             value = "keycloak.${var.domain_name}"
           }
           env {
+            name  = "KC_PROXY"
+            value = "edge"
+          }
+          env {
+            name  = "KC_HTTP_ENABLED"
+            value = "true"
+          }
+          env {
+            name  = "KC_HOSTNAME_PORT"
+            value = "80"
+          }
+          env {
+            name  = "KC_HOSTNAME_STRICT"
+            value = "false"
+          }
+          env {
+            name  = "KC_HOSTNAME_STRICT_HTTPS"
+            value = "false"
+          }
+          env {
+            name  = "KC_PROXY_HEADERS"
+            value = "xforwarded"
+          }
+          env {
             name  = "KC_DB"
             value = "postgres"
           }
           env {
-            name  = "KC_DB_URL_HOST"
-            value = "postgres"
+            name  = "KC_DB_URL"
+            value = "jdbc:postgresql://postgres:5432/keycloak"
           }
           env {
             name  = "KC_DB_USERNAME"
-            value = var.postgres_user
+            value = "keycloak"
           }
           env {
             name  = "KC_DB_PASSWORD"
             value = random_password.postgres.result
-          }
-          env {
-            name  = "KC_DB_DATABASE"
-            value = "keycloak" # Connect to the correct database
-          }
-          env {
-            name  = "KC_PROXY"
-            value = "edge"
           }
 
           port {
@@ -66,6 +82,16 @@ resource "kubernetes_deployment_v1" "keycloak" {
           port {
             name           = "management"
             container_port = 9000
+          }
+
+          readiness_probe {
+            http_get {
+              path = "/realms/master"
+              port = 8080
+            }
+            initial_delay_seconds = 30
+            period_seconds        = 10
+            failure_threshold     = 3
           }
 
           resources {

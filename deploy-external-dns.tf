@@ -1,4 +1,6 @@
 resource "helm_release" "external_dns" {
+  depends_on = [kubernetes_secret_v1.cloudflare_api_token]
+
   name       = "external-dns"
   repository = "https://kubernetes-sigs.github.io/external-dns/"
   chart      = "external-dns"
@@ -6,26 +8,30 @@ resource "helm_release" "external_dns" {
   wait       = true
   timeout    = 300
 
+  set = [
+    {
+      name  = "provider"
+      value = "cloudflare"
+    },
+    {
+      name  = "domainFilters[0]"
+      value = var.domain_name
+    },
+    {
+      name  = "policy"
+      value = "sync"
+    },
+    {
+      name  = "logLevel"
+      value = "debug"
+    }
+  ]
+
   values = [
     <<-EOT
-    provider: cloudflare
-    domainFilters:
-      - moedabot.xyz
-    policy: sync
-    logLevel: debug
-    rbac:
-      create: true
-    sources:
-      - ingress
-      - service
-
-    # Usa secret existente
-    env:
-      - name: CF_API_TOKEN
-        valueFrom:
-          secretKeyRef:
-            name: cloudflare-credentials
-            key: CF_API_TOKEN
+    extraEnvFrom:
+      - secretRef:
+          name: ${kubernetes_secret_v1.cloudflare_api_token.metadata[0].name}
     EOT
   ]
 }
