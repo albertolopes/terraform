@@ -29,9 +29,17 @@ resource "helm_release" "external_dns" {
 
   values = [
     <<-EOT
-    extraEnvFrom:
-      - secretRef:
-          name: ${kubernetes_secret_v1.cloudflare_api_token.metadata[0].name}
+    extraEnv:
+      - name: CF_API_TOKEN
+        valueFrom:
+          secretKeyRef:
+            name: ${kubernetes_secret_v1.cloudflare_api_token.metadata[0].name}
+            key: CF_API_TOKEN
+      - name: CF_API_EMAIL
+        valueFrom:
+          secretKeyRef:
+            name: ${kubernetes_secret_v1.cloudflare_api_token.metadata[0].name}
+            key: CF_API_EMAIL
     EOT
   ]
 }
