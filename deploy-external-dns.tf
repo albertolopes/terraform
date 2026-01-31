@@ -9,6 +9,7 @@ resource "helm_release" "external_dns" {
   timeout    = 300
 
   set = [
+    # Configurações básicas
     {
       name  = "provider"
       value = "cloudflare"
@@ -25,6 +26,38 @@ resource "helm_release" "external_dns" {
       name  = "logLevel"
       value = "debug"
     },
+
+    # --- Injeção Direta de Variáveis de Ambiente (Tradução do seu 'kubectl patch') ---
+    # Define a primeira variável de ambiente: CF_API_KEY
+    {
+      name  = "extraEnv[0].name"
+      value = "CF_API_KEY"
+    },
+    {
+      name  = "extraEnv[0].valueFrom.secretKeyRef.name"
+      value = kubernetes_secret_v1.cloudflare_credentials.metadata[0].name
+    },
+    {
+      name  = "extraEnv[0].valueFrom.secretKeyRef.key"
+      value = "CF_API_KEY"
+    },
+
+    # Define a segunda variável de ambiente: CF_API_EMAIL
+    {
+      name  = "extraEnv[1].name"
+      value = "CF_API_EMAIL"
+    },
+    {
+      name  = "extraEnv[1].valueFrom.secretKeyRef.name"
+      value = kubernetes_secret_v1.cloudflare_credentials.metadata[0].name
+    },
+    {
+      name  = "extraEnv[1].valueFrom.secretKeyRef.key"
+      value = "CF_API_EMAIL"
+    },
+    # --- Fim da Injeção ---
+
+    # Configurações adicionais recomendadas
     {
       name  = "cloudflare.proxied"
       value = "true"
@@ -37,15 +70,5 @@ resource "helm_release" "external_dns" {
       name  = "interval"
       value = "1m"
     }
-  ]
-
-  # Esta é a maneira correta de injetar as credenciais no pod,
-  # contornando a lógica de 'set' do chart que estava falhando.
-  values = [
-    <<-EOT
-    extraEnvFrom:
-      - secretRef:
-          name: ${kubernetes_secret_v1.cloudflare_credentials.metadata[0].name}
-    EOT
   ]
 }

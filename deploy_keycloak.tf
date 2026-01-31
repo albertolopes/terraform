@@ -31,16 +31,20 @@ resource "kubernetes_deployment_v1" "keycloak" {
             value = random_password.keycloak_admin.result
           }
 
-          # --- Configuração de Hostname v2 (Moderna e Correta) ---
+          # --- Configuração de Hostname e Proxy (Moderna e Correta) ---
           env {
             name  = "KC_HOSTNAME_URL"
             value = "https://keycloak.${var.domain_name}"
           }
           env {
-            name  = "KC_PROXY"
-            value = "edge"
+            name  = "KC_PROXY_HEADERS"
+            value = "xforwarded" # Diz ao Keycloak para confiar nos cabeçalhos X-Forwarded-*
           }
-          # --- Fim da Configuração de Hostname ---
+          env {
+            name  = "KC_HTTP_ENABLED"
+            value = "true" # Permite que a comunicação Ingress -> Keycloak seja HTTP
+          }
+          # --- Fim da Configuração de Hostname e Proxy ---
 
           env {
             name  = "KC_DB"
