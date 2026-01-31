@@ -7,7 +7,7 @@ variable "domain_name" {
 variable "cloudflare_email" {
   description = "The email address associated with the Cloudflare account."
   type        = string
-  sensitive   = true
+  sensitive   = false
 }
 
 variable "cloudflare_api_key" {
