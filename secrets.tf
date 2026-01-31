@@ -32,3 +32,17 @@ resource "kubernetes_secret_v1" "postgres_credentials" {
     "postgresql.auth.postgresPassword" = random_password.postgres.result
   }
 }
+
+resource "kubernetes_secret_v1" "cloudflare_credentials" {
+  depends_on = [null_resource.k3d_cluster]
+
+  metadata {
+    name      = "cloudflare-credentials"
+    namespace = "default"
+  }
+
+  data = {
+    "CF_API_KEY"   = var.cloudflare_api_key
+    "CF_API_EMAIL" = var.cloudflare_email
+  }
+}
