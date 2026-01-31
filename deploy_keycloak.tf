@@ -20,7 +20,7 @@ resource "kubernetes_deployment_v1" "keycloak" {
         container {
           name  = "keycloak"
           image = "quay.io/keycloak/keycloak:latest"
-          args  = ["start"] # Removido '--optimized' para permitir o build na primeira inicialização
+          args  = ["start"]
 
           env {
             name  = "KEYCLOAK_ADMIN"
@@ -30,34 +30,18 @@ resource "kubernetes_deployment_v1" "keycloak" {
             name  = "KEYCLOAK_ADMIN_PASSWORD"
             value = random_password.keycloak_admin.result
           }
+
+          # --- Configuração de Hostname v2 (Moderna e Correta) ---
           env {
-            name  = "KC_HOSTNAME"
-            value = "keycloak.${var.domain_name}"
+            name  = "KC_HOSTNAME_URL"
+            value = "https://keycloak.${var.domain_name}"
           }
           env {
             name  = "KC_PROXY"
             value = "edge"
           }
-          env {
-            name  = "KC_HTTP_ENABLED"
-            value = "true"
-          }
-          env {
-            name  = "KC_HOSTNAME_PORT"
-            value = "80"
-          }
-          env {
-            name  = "KC_HOSTNAME_STRICT"
-            value = "false"
-          }
-          env {
-            name  = "KC_HOSTNAME_STRICT_HTTPS"
-            value = "false"
-          }
-          env {
-            name  = "KC_PROXY_HEADERS"
-            value = "xforwarded"
-          }
+          # --- Fim da Configuração de Hostname ---
+
           env {
             name  = "KC_DB"
             value = "postgres"
