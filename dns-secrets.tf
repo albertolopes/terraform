@@ -7,7 +7,6 @@ resource "kubernetes_secret_v1" "cloudflare_credentials" {
   }
 
   data = {
-    # Usando o método de Chave de API Global + Email, que é o que o chart espera
     "CF_API_KEY"   = var.cloudflare_api_key
     "CF_API_EMAIL" = var.cloudflare_email
   }
