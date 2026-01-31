@@ -1,38 +1,17 @@
 resource "helm_release" "external_dns" {
-  depends_on = [
-    kubernetes_secret_v1.cloudflare_credentials,
-    null_resource.k3d_cluster
-  ]
+  depends_on = [kubernetes_secret_v1.cloudflare_credentials]
 
   name       = "external-dns"
   repository = "https://kubernetes-sigs.github.io/external-dns/"
   chart      = "external-dns"
   namespace  = "default"
+  wait       = true
+  timeout    = 300
 
-  # Configuração para API Key
+  # Configurações básicas
   set {
     name  = "provider"
     value = "cloudflare"
-  }
-
-  set {
-    name  = "cloudflare.apiKeySecret"
-    value = "cloudflare-credentials"
-  }
-
-  set {
-    name  = "cloudflare.apiKeySecretKey"
-    value = "CF_API_KEY"
-  }
-
-  set {
-    name  = "cloudflare.emailSecret"
-    value = "cloudflare-credentials"
-  }
-
-  set {
-    name  = "cloudflare.emailSecretKey"
-    value = "CF_API_EMAIL"
   }
 
   set {
@@ -48,5 +27,42 @@ resource "helm_release" "external_dns" {
   set {
     name  = "logLevel"
     value = "debug"
+  }
+
+  # Configuração ESPECÍFICA para Cloudflare com Secret
+  set {
+    name  = "cloudflare.apiKeySecret"
+    value = kubernetes_secret_v1.cloudflare_credentials.metadata[0].name
+  }
+
+  set {
+    name  = "cloudflare.apiKeySecretKey"
+    value = "CF_API_KEY"
+  }
+
+  set {
+    name  = "cloudflare.emailSecret"
+    value = kubernetes_secret_v1.cloudflare_credentials.metadata[0].name
+  }
+
+  set {
+    name  = "cloudflare.emailSecretKey"
+    value = "CF_API_EMAIL"
+  }
+
+  # Configurações adicionais recomendadas
+  set {
+    name  = "cloudflare.proxied"
+    value = "true"  # Usa proxy do Cloudflare
+  }
+
+  set {
+    name  = "txtOwnerId"
+    value = "k3d-cluster"
+  }
+
+  set {
+    name  = "interval"
+    value = "1m"
   }
 }
