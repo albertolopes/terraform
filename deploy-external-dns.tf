@@ -9,7 +9,6 @@ resource "helm_release" "external_dns" {
   timeout    = 300
 
   set = [
-    # Configurações básicas
     {
       name  = "provider"
       value = "cloudflare"
@@ -26,21 +25,9 @@ resource "helm_release" "external_dns" {
       name  = "logLevel"
       value = "debug"
     },
-
-    # Configuração ESPECÍFICA para Cloudflare com Secret (Sua Solução)
-    {
-      name  = "cloudflare.apiKey"
-      value = var.cloudflare_api_key
-    },
-    {
-      name  = "cloudflare.email"
-      value = var.cloudflare_email
-    },
-
-    # Configurações adicionais recomendadas
     {
       name  = "cloudflare.proxied"
-      value = "true" # Usa proxy do Cloudflare
+      value = "true"
     },
     {
       name  = "txtOwnerId"
@@ -50,5 +37,15 @@ resource "helm_release" "external_dns" {
       name  = "interval"
       value = "1m"
     }
+  ]
+
+  # Esta é a maneira correta de injetar as credenciais no pod,
+  # contornando a lógica de 'set' do chart que estava falhando.
+  values = [
+    <<-EOT
+    extraEnvFrom:
+      - secretRef:
+          name: ${kubernetes_secret_v1.cloudflare_credentials.metadata[0].name}
+    EOT
   ]
 }
