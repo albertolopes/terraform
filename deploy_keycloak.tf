@@ -44,6 +44,10 @@ resource "kubernetes_deployment_v1" "keycloak" {
             name  = "KC_HTTP_ENABLED"
             value = "true" # Permite que a comunicação Ingress -> Keycloak seja HTTP
           }
+          env {
+            name  = "KC_PROXY_HEADERS"
+            value = "xforwarded" # Diz ao Keycloak para confiar nos cabeçalhos X-Forwarded-*
+          }
           # --- Fim da Configuração de Proxy ---
 
           env {
