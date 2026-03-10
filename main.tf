@@ -51,8 +51,9 @@ module "keycloak" {
 
 # --- Servidor Web ---
 module "nginx" {
-  source     = "./modules/nginx"
-  depends_on = [module.k3d_cluster]
+  source      = "./modules/nginx"
+  domain_name = var.domain_name
+  depends_on  = [module.k3d_cluster]
 }
 
 # --- Networking ---

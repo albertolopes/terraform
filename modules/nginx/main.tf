@@ -1,3 +1,8 @@
+variable "domain_name" {
+  description = "Base domain name"
+  type        = string
+}
+
 resource "kubernetes_config_map_v1" "nginx_config" {
   metadata {
     name      = "nginx-config"
@@ -20,9 +25,41 @@ resource "kubernetes_config_map_v1" "nginx_config" {
         sendfile        on;
         keepalive_timeout  65;
 
+        # Resolver interno do K8s
+        resolver 10.43.0.10 valid=30s;
+
+        # Keycloak Proxy
         server {
           listen 80;
-          server_name _;
+          server_name keycloak.${var.domain_name};
+
+          location / {
+            proxy_pass http://keycloak:8080;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+          }
+        }
+
+        # Minio Proxy
+        server {
+          listen 80;
+          server_name minio.${var.domain_name};
+
+          location / {
+            proxy_pass http://minio:9000;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+          }
+        }
+
+        # Nginx (Default / Root)
+        server {
+          listen 80;
+          server_name nginx.${var.domain_name} ${var.domain_name} _;
 
           location / {
             root /usr/share/nginx/html;
@@ -48,8 +85,8 @@ resource "kubernetes_config_map_v1" "nginx_html" {
         <title>NGINX (managed by k3d)</title>
       </head>
       <body>
-        <h1>NGINX is running (managed by k3d + Terraform)</h1>
-        <p>If you see this page, the nginx pod served the default index.html from a ConfigMap.</p>
+        <h1>NGINX is your Entry Point! 🚀</h1>
+        <p>This Nginx instance is now acting as a Reverse Proxy for all services on ${var.domain_name}.</p>
       </body>
       </html>
     EOT
@@ -130,7 +167,7 @@ resource "kubernetes_service_v1" "nginx" {
     selector = {
       app = "nginx"
     }
-    type = "ClusterIP"
+    type = "LoadBalancer"
     port {
       name        = "http"
       port        = 80
