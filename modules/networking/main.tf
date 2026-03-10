@@ -22,6 +22,14 @@ resource "helm_release" "cert_manager" {
     {
       name  = "installCRDs"
       value = "true"
+    },
+    {
+      name  = "podDnsPolicy"
+      value = "None"
+    },
+    {
+      name  = "podDnsConfig.nameservers[0]"
+      value = "8.8.8.8"
     }
   ]
 }
