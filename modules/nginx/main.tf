@@ -1,5 +1,4 @@
 resource "kubernetes_config_map_v1" "nginx_config" {
-  depends_on = [null_resource.k3d_cluster]
   metadata {
     name      = "nginx-config"
     namespace = "default"
@@ -36,7 +35,6 @@ resource "kubernetes_config_map_v1" "nginx_config" {
 }
 
 resource "kubernetes_config_map_v1" "nginx_html" {
-  depends_on = [null_resource.k3d_cluster]
   metadata {
     name      = "nginx-html"
     namespace = "default"
@@ -59,16 +57,12 @@ resource "kubernetes_config_map_v1" "nginx_html" {
 }
 
 resource "kubernetes_deployment_v1" "nginx" {
-  depends_on = [
-    kubernetes_config_map_v1.nginx_config,
-    kubernetes_config_map_v1.nginx_html
-  ]
   metadata {
     name      = "nginx"
     namespace = "default"
   }
   spec {
-    replicas = 2 # Changed to 2 replicas
+    replicas = 2
     selector {
       match_labels = {
         app = "nginx"
@@ -128,7 +122,6 @@ resource "kubernetes_deployment_v1" "nginx" {
 }
 
 resource "kubernetes_service_v1" "nginx" {
-  depends_on = [kubernetes_deployment_v1.nginx]
   metadata {
     name      = "nginx"
     namespace = "default"

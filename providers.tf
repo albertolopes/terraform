@@ -19,12 +19,19 @@ terraform {
   }
 }
 
+locals {
+  kubeconfig_path = "${path.module}/.k3d_kubeconfig"
+  # Se o arquivo não existe, usamos um path que o Terraform ignorará durante a validação inicial do provider
+  # mas que existe no sistema (como /dev/null) para evitar erro de 'stat' no plan.
+  effective_config_path = fileexists(local.kubeconfig_path) ? local.kubeconfig_path : "/dev/null"
+}
+
 provider "kubernetes" {
-  config_path = "${path.module}/.k3d_kubeconfig"
+  config_path = local.effective_config_path
 }
 
 provider "helm" {
   kubernetes = {
-    config_path = "${path.module}/.k3d_kubeconfig"
+    config_path = local.effective_config_path
   }
 }

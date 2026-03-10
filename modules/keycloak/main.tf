@@ -1,5 +1,36 @@
+variable "admin_user" {
+  description = "Keycloak admin username"
+  type        = string
+}
+
+variable "admin_password" {
+  description = "Keycloak admin password"
+  type        = string
+  sensitive   = true
+}
+
+variable "domain_name" {
+  description = "Base domain name"
+  type        = string
+}
+
+variable "db_password" {
+  description = "Postgres database password"
+  type        = string
+  sensitive   = true
+}
+
+resource "kubernetes_secret_v1" "keycloak_admin" {
+  metadata {
+    name = "keycloak-admin"
+  }
+  data = {
+    "auth.adminUser"     = var.admin_user
+    "auth.adminPassword" = var.admin_password
+  }
+}
+
 resource "kubernetes_deployment_v1" "keycloak" {
-  depends_on = [helm_release.postgres]
   metadata {
     name = "keycloak"
   }
@@ -24,31 +55,29 @@ resource "kubernetes_deployment_v1" "keycloak" {
 
           env {
             name  = "KEYCLOAK_ADMIN"
-            value = var.keycloak_admin_user
+            value = var.admin_user
           }
           env {
             name  = "KEYCLOAK_ADMIN_PASSWORD"
-            value = random_password.keycloak_admin.result
+            value = var.admin_password
           }
 
-          # --- Configuração de Proxy Definitiva ---
           env {
             name  = "KC_HOSTNAME"
             value = "keycloak.${var.domain_name}"
           }
           env {
             name  = "KC_PROXY"
-            value = "edge" # Habilita o modo de proxy reverso
+            value = "edge"
           }
           env {
             name  = "KC_HTTP_ENABLED"
-            value = "true" # Permite que a comunicação Ingress -> Keycloak seja HTTP
+            value = "true"
           }
           env {
             name  = "KC_PROXY_HEADERS"
-            value = "xforwarded" # Diz ao Keycloak para confiar nos cabeçalhos X-Forwarded-*
+            value = "xforwarded"
           }
-          # --- Fim da Configuração de Proxy ---
 
           env {
             name  = "KC_DB"
@@ -64,7 +93,7 @@ resource "kubernetes_deployment_v1" "keycloak" {
           }
           env {
             name  = "KC_DB_PASSWORD"
-            value = random_password.postgres.result
+            value = var.db_password
           }
 
           port {
@@ -103,7 +132,6 @@ resource "kubernetes_deployment_v1" "keycloak" {
 }
 
 resource "kubernetes_service_v1" "keycloak" {
-  depends_on = [kubernetes_deployment_v1.keycloak]
   metadata {
     name = "keycloak"
   }

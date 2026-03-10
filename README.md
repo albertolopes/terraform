@@ -112,7 +112,14 @@ Se você ver um erro como `permission denied while trying to connect to the Dock
 kubectl create secret generic cloudflare-credentials \
 --namespace=default \
 --from-literal=CF_API_TOKEN='TOKEN' \
---dry-run=client -o yaml | kubectl apply -f -
+# Teste direto com curl
+API_KEY="zubiWVgVC-D9959FpUHgrGY_tah8GI9AVB1jBEiC"
+EMAIL="allbertollopes@gmail.com"
+
+curl -s -X GET "https://api.cloudflare.com/client/v4/zones" \
+-H "X-Auth-Email: allbertollopes@gmail.com" \
+-H "X-Auth-Key: zubiWVgVC-D9959FpUHgrGY_tah8GI9AVB1jBEiC" \
+-H "Content-Type: application/json" | jq '.success'--dry-run=client -o yaml | kubectl apply -f -
 
 # Verifique o secret
 kubectl get secret cloudflare-credentials -n default -o jsonpath='{.data.CF_API_TOKEN}' | base64 -d

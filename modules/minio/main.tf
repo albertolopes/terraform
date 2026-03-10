@@ -1,7 +1,26 @@
+variable "minio_access_key" {
+  description = "Minio access key"
+  type        = string
+}
+
+variable "minio_secret_key" {
+  description = "Minio secret key"
+  type        = string
+  sensitive   = true
+}
+
+resource "kubernetes_secret_v1" "minio_credentials" {
+  metadata {
+    name = "minio-credentials"
+  }
+  data = {
+    accesskey = var.minio_access_key
+    secretkey = var.minio_secret_key
+  }
+}
+
 resource "helm_release" "minio" {
-  depends_on = [
-    kubernetes_secret_v1.minio_credentials
-  ]
+  depends_on = [kubernetes_secret_v1.minio_credentials]
   name             = "minio"
   repository       = "https://charts.min.io/"
   chart            = "minio"
@@ -19,15 +38,15 @@ resource "helm_release" "minio" {
     },
     {
       name  = "accessKey"
-      value = kubernetes_secret_v1.minio_credentials.data.accesskey
+      value = var.minio_access_key
     },
     {
       name  = "secretKey"
-      value = kubernetes_secret_v1.minio_credentials.data.secretkey
+      value = var.minio_secret_key
     },
     {
       name  = "resources.requests.memory"
-      value = "256Mi" # Reduced memory for standalone mode
+      value = "256Mi"
     },
     {
       name  = "ingress.enabled"

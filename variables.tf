@@ -1,19 +1,7 @@
 variable "domain_name" {
   description = "The base domain name for the services."
   type        = string
-  default     = "moedabot.xyz"
-}
-
-variable "cloudflare_email" {
-  description = "The email address associated with the Cloudflare account."
-  type        = string
-  sensitive   = false
-}
-
-variable "cloudflare_api_key" {
-  description = "The Global API Key for the Cloudflare account."
-  type        = string
-  sensitive   = true
+  default     = "avocadotech.site"
 }
 
 # --- Usernames ---
@@ -28,3 +16,6 @@ variable "minio_access_key" {
   type        = string
   default     = "minioadmin"
 }
+
+
+
