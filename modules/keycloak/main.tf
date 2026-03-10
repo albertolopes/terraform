@@ -67,6 +67,10 @@ resource "kubernetes_deployment_v1" "keycloak" {
             value = "keycloak.${var.domain_name}"
           }
           env {
+            name  = "KC_HOSTNAME_STRICT"
+            value = "false"
+          }
+          env {
             name  = "KC_PROXY"
             value = "edge"
           }

@@ -1,0 +1,36 @@
+name: "Terraform Deploy"
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  terraform:
+    name: "Terraform Apply"
+    runs-on: self-hosted
+    
+    # Define o diretório de trabalho caso o runner não inicie na raiz do repo
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
+
+      - name: Restore Terraform Variables
+        run: |
+          echo "${{ secrets.TF_VARS_CONTENT }}" > terraform.tfvars
+        if: "${{ secrets.TF_VARS_CONTENT != '' }}"
+
+      - name: Terraform Init
+        run: terraform init
+
+      - name: Terraform Apply
+        run: terraform apply -auto-approve
