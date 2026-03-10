@@ -193,5 +193,10 @@ resource "kubernetes_service_v1" "nginx" {
       port        = 80
       target_port = 80
     }
+    port {
+      name        = "https"
+      port        = 443
+      target_port = 80
+    }
   }
 }
