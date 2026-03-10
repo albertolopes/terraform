@@ -3,5 +3,95 @@ variable "domain_name" {
   type        = string
 }
 
-# Ingress removido pois o Nginx está atuando como ponto de entrada principal (Proxy Reverso)
-# e o K3D foi provisionado com Traefik desabilitado.
+variable "cloudflare_api_token" {
+  description = "Cloudflare API Token for DNS-01 challenge"
+  type        = string
+  sensitive   = true
+}
+
+# --- Cert-Manager (Helm) ---
+resource "helm_release" "cert_manager" {
+  name       = "cert-manager"
+  repository = "https://charts.jetstack.io"
+  chart      = "cert-manager"
+  namespace  = "cert-manager"
+  create_namespace = true
+  version    = "v1.14.4"
+
+  set = [
+    {
+      name  = "installCRDs"
+      value = "true"
+    }
+  ]
+}
+
+# --- Cloudflare API Token Secret ---
+resource "kubernetes_secret_v1" "cloudflare_api_token" {
+  depends_on = [helm_release.cert_manager]
+  metadata {
+    name      = "cloudflare-api-token-secret"
+    namespace = "cert-manager"
+  }
+
+  data = {
+    "api-token" = var.cloudflare_api_token
+  }
+}
+
+# --- ClusterIssuer (Let's Encrypt + DNS-01) ---
+resource "kubernetes_manifest" "letsencrypt_issuer" {
+  depends_on = [kubernetes_secret_v1.cloudflare_api_token]
+  manifest = {
+    apiVersion = "cert-manager.io/v1"
+    kind       = "ClusterIssuer"
+    metadata = {
+      name = "letsencrypt-cloudflare"
+    }
+    spec = {
+      acme = {
+        email  = "admin@${var.domain_name}"
+        server = "https://acme-v02.api.letsencrypt.org/directory"
+        privateKeySecretRef = {
+          name = "letsencrypt-cloudflare-account-key"
+        }
+        solvers = [
+          {
+            dns01 = {
+              cloudflare = {
+                apiTokenSecretRef = {
+                  name = kubernetes_secret_v1.cloudflare_api_token.metadata[0].name
+                  key  = "api-token"
+                }
+              }
+            }
+          }
+        ]
+      }
+    }
+  }
+}
+
+# --- Certificate (Let's Encrypt) ---
+resource "kubernetes_manifest" "avocado_cert" {
+  depends_on = [kubernetes_manifest.letsencrypt_issuer]
+  manifest = {
+    apiVersion = "cert-manager.io/v1"
+    kind       = "Certificate"
+    metadata = {
+      name      = "avocado-public-cert"
+      namespace = "default"
+    }
+    spec = {
+      secretName = "nginx-certs" # Mesmo nome que o Nginx já usa
+      issuerRef = {
+        name = "letsencrypt-cloudflare"
+        kind = "ClusterIssuer"
+      }
+      dnsNames = [
+        var.domain_name,
+        "*.${var.domain_name}"
+      ]
+    }
+  }
+}

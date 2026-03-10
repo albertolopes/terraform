@@ -3,27 +3,48 @@ variable "domain_name" {
   type        = string
 }
 
-# --- Geração de Certificado Auto-assinado ---
+# --- 1. Autoridade Certificadora (CA) Raiz ---
+resource "tls_private_key" "ca" {
+  algorithm = "RSA"
+  rsa_bits  = 4096
+}
+
+resource "tls_self_signed_cert" "ca" {
+  private_key_pem = tls_private_key.ca.private_key_pem
+
+  subject {
+    common_name  = "Avocado Tech Local Root CA"
+    organization = "Avocado Tech"
+  }
+
+  is_ca_certificate     = true
+  validity_period_hours = 87600 # 10 anos
+
+  allowed_uses = [
+    "cert_signing",
+    "crl_signing",
+  ]
+}
+
+# Exportar o certificado da CA para o host (para o usuário instalar)
+resource "local_file" "ca_cert" {
+  content  = tls_self_signed_cert.ca.cert_pem
+  filename = "${path.module}/../../avocado-ca.crt"
+}
+
+# --- 2. Certificado do Servidor Nginx (Assinado pela CA) ---
 resource "tls_private_key" "nginx" {
   algorithm = "RSA"
   rsa_bits  = 2048
 }
 
-resource "tls_self_signed_cert" "nginx" {
+resource "tls_cert_request" "nginx" {
   private_key_pem = tls_private_key.nginx.private_key_pem
 
   subject {
     common_name  = "*.${var.domain_name}"
     organization = "Avocado Tech"
   }
-
-  validity_period_hours = 8760 # 1 ano
-
-  allowed_uses = [
-    "key_encipherment",
-    "digital_signature",
-    "server_auth",
-  ]
 
   dns_names = [
     var.domain_name,
@@ -34,6 +55,21 @@ resource "tls_self_signed_cert" "nginx" {
   ]
 }
 
+resource "tls_locally_signed_cert" "nginx" {
+  cert_request_pem   = tls_cert_request.nginx.cert_request_pem
+  ca_private_key_pem = tls_private_key.ca.private_key_pem
+  ca_cert_pem        = tls_self_signed_cert.ca.cert_pem
+
+  validity_period_hours = 8760 # 1 ano
+
+  allowed_uses = [
+    "key_encipherment",
+    "digital_signature",
+    "server_auth",
+  ]
+}
+
+# --- 3. Kubernetes Secret ---
 resource "kubernetes_secret_v1" "nginx_certs" {
   metadata {
     name      = "nginx-certs"
@@ -41,11 +77,12 @@ resource "kubernetes_secret_v1" "nginx_certs" {
   }
   type = "kubernetes.io/tls"
   data = {
-    "tls.crt" = tls_self_signed_cert.nginx.cert_pem
+    "tls.crt" = tls_locally_signed_cert.nginx.cert_pem
     "tls.key" = tls_private_key.nginx.private_key_pem
   }
 }
 
+# --- 4. Nginx Configuration ---
 resource "kubernetes_config_map_v1" "nginx_config" {
   metadata {
     name      = "nginx-config"
@@ -80,7 +117,7 @@ resource "kubernetes_config_map_v1" "nginx_config" {
         # Keycloak Proxy
         server {
           listen 80;
-          listen 443 ssl;
+          # listen 443 ssl;
           server_name keycloak.${var.domain_name};
 
           location / {
@@ -90,7 +127,6 @@ resource "kubernetes_config_map_v1" "nginx_config" {
             proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
             proxy_set_header X-Forwarded-Proto $scheme;
             proxy_set_header X-Forwarded-Host $host;
-            proxy_set_header X-Forwarded-Port $server_port;
 
             # Forçar redirecionamentos serem relativos ao host acessado
             proxy_redirect http://$host/ /;
@@ -102,7 +138,7 @@ resource "kubernetes_config_map_v1" "nginx_config" {
         # Minio Proxy
         server {
           listen 80;
-          listen 443 ssl;
+          # listen 443 ssl;
           server_name minio.${var.domain_name};
 
           location / {
@@ -123,7 +159,7 @@ resource "kubernetes_config_map_v1" "nginx_config" {
         # Nginx (Default / Root)
         server {
           listen 80;
-          listen 443 ssl;
+          # listen 443 ssl;
           server_name nginx.${var.domain_name} ${var.domain_name} _;
 
           location / {

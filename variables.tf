@@ -16,6 +16,8 @@ variable "minio_access_key" {
   type        = string
   default     = "minioadmin"
 }
-
-
-
+variable "cloudflare_api_token" {
+  description = "The API Token for Cloudflare DNS-01 challenge."
+  type        = string
+  sensitive   = true
+}

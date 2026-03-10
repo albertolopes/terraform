@@ -58,7 +58,8 @@ module "nginx" {
 
 # --- Networking ---
 module "networking" {
-  source                  = "./modules/networking"
-  domain_name             = var.domain_name
-  depends_on              = [module.k3d_cluster, module.keycloak, module.nginx]
+  source               = "./modules/networking"
+  domain_name          = var.domain_name
+  cloudflare_api_token = var.cloudflare_api_token
+  depends_on           = [module.k3d_cluster, module.keycloak, module.nginx]
 }
