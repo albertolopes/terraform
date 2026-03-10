@@ -110,6 +110,10 @@ resource "kubernetes_deployment_v1" "nginx" {
         labels = {
           app = "nginx"
         }
+        annotations = {
+          # Força o reinício dos pods se a configuração mudar
+          "checksum/config" = sha256(jsonencode(kubernetes_config_map_v1.nginx_config.data))
+        }
       }
       spec {
         security_context {
