@@ -66,7 +66,7 @@ resource "kubernetes_manifest" "letsencrypt_issuer" {
         solvers = [
           {
             dns01 = {
-              cloudflare = {
+            cloudflare = {
                 apiTokenSecretRef = {
                   name = kubernetes_secret_v1.cloudflare_api_token.metadata[0].name
                   key  = "api-token"
