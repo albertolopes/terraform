@@ -9,6 +9,11 @@ variable "minio_secret_key" {
   sensitive   = true
 }
 
+variable "domain_name" {
+  description = "Base domain name for constructing Minio URLs"
+  type        = string
+}
+
 resource "kubernetes_secret_v1" "minio_credentials" {
   metadata {
     name = "minio-credentials"
@@ -55,6 +60,24 @@ resource "helm_release" "minio" {
     {
       name  = "consoleIngress.enabled"
       value = "false"
+    },
+    # Garante que o serviço do Console seja criado pelo Helm
+    {
+      name  = "consoleService.type"
+      value = "ClusterIP"
+    },
+    {
+      name  = "consoleService.port"
+      value = "9001"
+    },
+    # --- Configuração de Proxy Reverso ---
+    {
+      name  = "environment.MINIO_SERVER_URL"
+      value = "https://minio.${var.domain_name}"
+    },
+    {
+      name  = "environment.MINIO_BROWSER_REDIRECT_URL"
+      value = "https://minio-console.${var.domain_name}"
     }
   ]
 }

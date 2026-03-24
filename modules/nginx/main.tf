@@ -60,7 +60,7 @@ resource "kubernetes_config_map_v1" "nginx_config" {
           }
         }
 
-        # Minio Proxy
+        # Minio API Proxy (S3)
         server {
           listen 80;
           listen 443 ssl;
@@ -74,10 +74,53 @@ resource "kubernetes_config_map_v1" "nginx_config" {
             proxy_set_header X-Forwarded-Proto $scheme;
             proxy_set_header X-Forwarded-Host $host;
 
-            # Redirecionamentos para Minio
+            # Redirecionamentos para Minio API
             proxy_redirect http://$host/ /;
             proxy_redirect http://minio:9000/ /;
             proxy_redirect http://minio.${var.domain_name}/ /;
+          }
+        }
+
+        # Minio Console Proxy (Web UI)
+        server {
+          listen 80;
+          listen 443 ssl;
+          server_name minio-console.${var.domain_name};
+
+          location / {
+            # Aponta para o novo serviço 'minio-console' que criamos manualmente
+            proxy_pass http://minio-console:9001;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            proxy_set_header X-Forwarded-Host $host;
+
+            # Necessário para WebSockets (Minio Console usa)
+            proxy_http_version 1.1;
+            proxy_set_header Upgrade $http_upgrade;
+            proxy_set_header Connection "upgrade";
+
+            # Redirecionamentos para Minio Console
+            proxy_redirect http://$host/ /;
+            proxy_redirect http://minio-console:9001/ /;
+            proxy_redirect http://minio-console.${var.domain_name}/ /;
+          }
+        }
+
+        # API Customizada Proxy
+        server {
+          listen 80;
+          listen 443 ssl;
+          server_name api.${var.domain_name};
+
+          location / {
+            proxy_pass http://na-palma-da-mao-api:8080;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            proxy_set_header X-Forwarded-Host $host;
           }
         }
 

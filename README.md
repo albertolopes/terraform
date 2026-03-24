@@ -6,7 +6,7 @@ Ele implanta os seguintes serviços, todos acessíveis via Ingress com SSL autom
 - **Keycloak:** Gerenciamento de Identidade e Acesso.
 - **Minio:** Armazenamento de objetos compatível com S3.
 - **PostgreSQL:** Banco de dados relacional para o Keycloak.
-- **Nginx:** Servidor web de exemplo.
+- **Nginx:** Servidor web de exemplo e Ingress Controller.
 - **ExternalDNS:** Sincronização automática de registros DNS com o Cloudflare.
 - **Cert-Manager:** Gerenciamento automático de certificados SSL.
 
@@ -28,8 +28,8 @@ Para que o DNS e o SSL funcionem, você precisa configurar as credenciais do Clo
 2.  Adicione suas credenciais:
 
 ```hcl
-cloudflare_api_key = "SUA_CHAVE_GLOBAL_AQUI"
-cloudflare_email   = "SEU_EMAIL_AQUI"
+cloudflare_api_token = "SEU_TOKEN_DE_API_DO_CLOUDFLARE"
+cloudflare_email     = "SEU_EMAIL_DO_CLOUDFLARE"
 ```
 
 ## 3. Implantação (O Fluxo de 3 Etapas)
@@ -59,7 +59,7 @@ Responda `yes` quando solicitado.
 **Passo 3: Instalar o Cert-Manager**
 Isso instala o Cert-Manager e registra as CRDs necessárias.
 ```sh
--target
+terraform apply -target=module.networking.helm_release.cert_manager
 ```
 Responda `yes` quando solicitado.
 
@@ -78,17 +78,92 @@ Para qualquer alteração futura no código, você só precisa executar:
 terraform apply
 ```
 
-## 4. Acessando os Serviços
+## 4. Acessando os Serviços e Credenciais
 
-Após a conclusão, os serviços estarão disponíveis via HTTPS com certificados válidos:
+Após a conclusão, os serviços estarão disponíveis via HTTPS.
 
-- **Keycloak:** `https://keycloak.moedabot.xyz`
-- **Minio Console:** `https://minio-console.moedabot.xyz`
-- **Minio API (S3):** `https://minio.moedabot.xyz`
-- **API Customizada:** `https://api.moedabot.xyz`
+### URLs
+- **Keycloak:** `https://keycloak.avocadotech.site`
+- **Minio Console:** `https://minio-console.avocadotech.site`
+- **Minio API (S3):** `https://minio.avocadotech.site`
+- **API Customizada:** `https://api.avocadotech.site`
 
-## 5. Solução de Problemas Comuns
+### Recuperando Senhas
+As senhas são geradas aleatoriamente e armazenadas no estado do Terraform. Para vê-las:
 
-### Erro de DNS "i/o timeout"
+**Keycloak:**
+- Usuário: `admin`
+- Senha:
+  ```sh
+  terraform output -raw keycloak_admin_password
+  ```
 
-Se o Terraform falhar ao baixar charts do Helm com erros de DNS, verifique se o seu servidor está usando servidores DNS válidos. Em um servidor Ubuntu, você pode precisar forçar o uso do DNS do Google (8.8.8.8) editando `/etc/systemd/resolved.conf`.
+**Minio:**
+- Usuário: `minioadmin` (ou o valor de var.minio_access_key)
+- Senha:
+  ```sh
+  terraform output -raw minio_secret_key
+  ```
+
+**Postgres:**
+- Senha:
+  ```sh
+  terraform output -raw postgres_password
+  ```
+
+## 5. Solução de Problemas Comuns (Troubleshooting)
+
+### Nginx: "cannot load certificate ... no such file"
+**Sintoma:** O pod do Nginx fica reiniciando com erro de `emerg` dizendo que não acha `tls.crt`.
+**Causa:** O Certificado ainda não foi emitido pelo Cert-Manager, então o segredo `nginx-certs` não existe.
+**Solução:**
+1.  Verifique se o Cert-Manager está rodando:
+    ```sh
+    kubectl get pods -n cert-manager
+    ```
+2.  Verifique o status do certificado:
+    ```sh
+    kubectl get certificate
+    ```
+    Se estiver `READY: False`, aguarde.
+3.  Se o segredo já existe (`kubectl get secret nginx-certs`) e o erro persiste, o Nginx pode estar com configuração antiga. Force a recriação dos pods:
+    ```sh
+    kubectl delete pods -l app=nginx
+    ```
+
+### Cert-Manager: Travado em "Pending" ou sem Eventos
+**Sintoma:** O certificado não é emitido. `kubectl describe challenge` não mostra eventos.
+**Solução:**
+1.  Apague o challenge travado para forçar o Cert-Manager a tentar de novo:
+    ```sh
+    kubectl delete challenge <nome-do-challenge-travado>
+    ```
+2.  Se persistir, reinicie o controlador do Cert-Manager:
+    ```sh
+    kubectl rollout restart deployment cert-manager -n cert-manager
+    ```
+
+### Nginx: Redirecionamento Incorreto ou Configuração Antiga
+**Sintoma:** Você acessa `minio-console...` mas cai no Keycloak, ou o Nginx não reflete mudanças recentes no `nginx.conf`.
+**Causa:** O Terraform atualizou o ConfigMap, mas o Pod do Nginx não recarregou o arquivo.
+**Solução:**
+1.  Force a atualização do ConfigMap:
+    ```sh
+    terraform taint module.nginx.kubernetes_config_map_v1.nginx_config
+    terraform apply -target=module.nginx.kubernetes_config_map_v1.nginx_config
+    ```
+2.  Mate os pods para forçar a leitura da nova configuração:
+    ```sh
+    kubectl delete pods -l app=nginx
+    ```
+
+### Erro: "deployments.apps nginx already exists"
+**Sintoma:** O Terraform falha ao tentar criar um recurso que já existe no cluster (mas não no estado).
+**Solução:** Importe o recurso para o estado do Terraform:
+```sh
+terraform import module.nginx.kubernetes_deployment_v1.nginx default/nginx
+```
+Ou apague o recurso do cluster para deixar o Terraform recriar:
+```sh
+kubectl delete deployment nginx
+```
