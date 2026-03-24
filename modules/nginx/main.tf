@@ -42,7 +42,7 @@ resource "kubernetes_config_map_v1" "nginx_config" {
         # Keycloak Proxy
         server {
           listen 80;
-          listen 443 ssl;
+          # listen 443 ssl;
           server_name keycloak.${var.domain_name};
 
           location / {
@@ -63,7 +63,7 @@ resource "kubernetes_config_map_v1" "nginx_config" {
         # Minio API Proxy (S3)
         server {
           listen 80;
-          listen 443 ssl;
+          # listen 443 ssl;
           server_name minio.${var.domain_name};
 
           location / {
@@ -84,7 +84,7 @@ resource "kubernetes_config_map_v1" "nginx_config" {
         # Minio Console Proxy (Web UI)
         server {
           listen 80;
-          listen 443 ssl;
+          # listen 443 ssl;
           server_name minio-console.${var.domain_name};
 
           location / {
@@ -111,7 +111,7 @@ resource "kubernetes_config_map_v1" "nginx_config" {
         # API Customizada Proxy
         server {
           listen 80;
-          listen 443 ssl;
+          # listen 443 ssl;
           server_name api.${var.domain_name};
 
           location / {
@@ -127,7 +127,7 @@ resource "kubernetes_config_map_v1" "nginx_config" {
         # Nginx (Default / Root)
         server {
           listen 80;
-          listen 443 ssl;
+          # listen 443 ssl;
           server_name nginx.${var.domain_name} ${var.domain_name} _;
 
           location / {

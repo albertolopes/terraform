@@ -12,7 +12,7 @@ variable "cloudflare_api_token" {
 variable "tailscale_funnel_url" {
   description = "The Tailscale Funnel URL to point CNAME records to"
   type        = string
-  default     = "avocado.tail799250.ts.net" # Seu URL do Funnel
+  default     = "avocado.tail799250.ts.net"
 }
 
 # --- Cert-Manager (Helm) ---
