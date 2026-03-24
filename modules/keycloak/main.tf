@@ -61,7 +61,6 @@ resource "kubernetes_deployment_v1" "keycloak" {
             name  = "KEYCLOAK_ADMIN_PASSWORD"
             value = var.admin_password
           }
-
           env {
             name  = "KC_HOSTNAME"
             value = "keycloak.${var.domain_name}"
@@ -71,8 +70,16 @@ resource "kubernetes_deployment_v1" "keycloak" {
             value = "false"
           }
           env {
+            name  = "KC_HOSTNAME_STRICT_HTTPS"
+            value = "false"
+          }
+          env {
             name  = "KC_PROXY"
             value = "edge"
+          }
+          env {
+            name  = "KC_PROXY_ADDRESS_FORWARDING"
+            value = "true"
           }
           env {
             name  = "KC_HTTP_ENABLED"
@@ -82,7 +89,6 @@ resource "kubernetes_deployment_v1" "keycloak" {
             name  = "KC_PROXY_HEADERS"
             value = "xforwarded"
           }
-
           env {
             name  = "KC_DB"
             value = "postgres"
