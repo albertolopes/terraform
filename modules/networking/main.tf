@@ -9,6 +9,12 @@ variable "cloudflare_api_token" {
   sensitive   = true
 }
 
+variable "tailscale_funnel_url" {
+  description = "The Tailscale Funnel URL to point CNAME records to"
+  type        = string
+  default     = "avocado.tail799250.ts.net" # Seu URL do Funnel
+}
+
 # --- Cert-Manager (Helm) ---
 resource "helm_release" "cert_manager" {
   name       = "cert-manager"
@@ -66,7 +72,7 @@ resource "kubernetes_manifest" "letsencrypt_issuer" {
         solvers = [
           {
             dns01 = {
-            cloudflare = {
+              cloudflare = {
                 apiTokenSecretRef = {
                   name = kubernetes_secret_v1.cloudflare_api_token.metadata[0].name
                   key  = "api-token"

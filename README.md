@@ -32,11 +32,11 @@ cloudflare_api_token = "SEU_TOKEN_DE_API_DO_CLOUDFLARE"
 cloudflare_email     = "SEU_EMAIL_DO_CLOUDFLARE"
 ```
 
-## 3. Implantação (O Fluxo de 3 Etapas)
+## 3. Implantação (O Fluxo de 4 Etapas)
 
-Devido a dependências de CRDs (Custom Resource Definitions) do Kubernetes, a implantação inicial deve ser feita em três etapas para evitar erros de "resource not found".
+Devido a dependências de CRDs (Custom Resource Definitions), siga esta ordem estritamente para evitar erros de "resource not found".
 
-**Passo 0: Limpeza (Opcional, mas recomendado)**
+**Passo 0: Limpeza (Opcional, mas recomendado para recomeçar do zero)**
 ```sh
 k3d cluster delete mycluster
 rm -f .terraform.lock.hcl
@@ -50,29 +50,36 @@ terraform init
 ```
 
 **Passo 2: Criar a Infraestrutura Básica**
-Isso cria o cluster, o banco de dados, o Keycloak e o Nginx.
+Isso cria o cluster e os serviços base (Banco, Keycloak, Nginx, Minio).
 ```sh
 terraform apply -target=module.k3d_cluster -target=module.postgres -target=module.minio -target=module.keycloak -target=module.nginx
 ```
-Responda `yes` quando solicitado.
+Responda `yes`.
 
-**Passo 3: Instalar o Cert-Manager**
-Isso instala o Cert-Manager e registra as CRDs necessárias.
+**Passo 3: Instalar o Cert-Manager (Crítico)**
+Esta etapa instala os CRDs necessários para os certificados. Deve ser feita separadamente.
 ```sh
 terraform apply -target=module.networking.helm_release.cert_manager
 ```
-Responda `yes` quando solicitado.
+Responda `yes`.
 
-**Passo 4: Configurar SSL e Finalizar**
-Agora que as CRDs existem, podemos criar os emissores de certificado e aplicar o restante da configuração.
+**Passo 4: Configurar Certificados e Finalizar**
+Agora que as CRDs existem, podemos criar os emissores e finalizar a configuração.
+```sh
+terraform apply -target=module.networking
+```
+Responda `yes`.
+
+**Passo 5: Atualização Final (Garantia)**
+Garante que o Nginx e outros serviços detectem os certificados recém-criados.
 ```sh
 terraform apply
 ```
-Responda `yes` quando solicitado.
+Responda `yes`.
 
 ### 3.1. Atualizações Futuras
 
-Para qualquer alteração futura no código, você só precisa executar:
+Para qualquer alteração futura no código (após a instalação inicial), você só precisa executar:
 
 ```sh
 terraform apply
@@ -140,7 +147,7 @@ As senhas são geradas aleatoriamente e armazenadas no estado do Terraform. Para
     ```
 2.  Se persistir, reinicie o controlador do Cert-Manager:
     ```sh
-    kubectl rollout restart deployment cert-manager -n cert-manager
+    kubectl rollout restart deployment -n cert-manager
     ```
 
 ### Nginx: Redirecionamento Incorreto ou Configuração Antiga
@@ -167,3 +174,27 @@ Ou apague o recurso do cluster para deixar o Terraform recriar:
 ```sh
 kubectl delete deployment nginx
 ```
+
+### Conexão via Tailscale / VPN
+**Sintoma:** `terraform apply` falha com `i/o timeout` ao conectar no cluster remoto via Tailscale.
+**Causa:** O IP do kubeconfig pode estar incorreto (IP local do servidor em vez do IP da VPN).
+**Solução:** Substitua o IP no kubeconfig pelo IP do Tailscale:
+```sh
+sed -i "s/192.168.0.100/$(tailscale ip -4)/" .k3d_kubeconfig
+```
+(Substitua `192.168.0.100` pelo IP original que estava no arquivo).
+
+### Recriando Certificados SSL
+**Sintoma:** Você precisa forçar a emissão de um novo certificado (por exemplo, após mudar de servidor ou token).
+**Causa:** O `cert-manager` não tem um pedido de certificado para processar.
+**Solução:**
+1.  Garanta que seu token do Cloudflare está correto (no `terraform.tfvars` ou `export TF_VAR_...`).
+2.  Force o Terraform a criar os recursos de certificado no cluster:
+    ```sh
+    terraform apply -target=module.networking
+    ```
+3.  Acompanhe o processo:
+    ```sh
+    kubectl get certificate -w
+    ```
+    (Use os outros comandos de `describe` se o certificado ficar travado em `False`).
