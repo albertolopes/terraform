@@ -84,7 +84,7 @@ resource "kubernetes_cluster_role_binding_v1" "traefik" {
   ]
 }
 
-# ConfigMap do Traefik (PING HABILITADO)
+# ConfigMap do Traefik
 resource "kubernetes_config_map_v1" "traefik" {
   metadata {
     name      = "traefik-config"
@@ -98,9 +98,8 @@ resource "kubernetes_config_map_v1" "traefik" {
 
       api:
         dashboard: ${var.enable_dashboard}
-        debug: false
+        insecure: false # Dashboard não é mais acessado via insecure API
 
-      # Habilita o endpoint de Ping (CORREÇÃO V3)
       ping:
         entryPoint: traefik
 
@@ -115,6 +114,8 @@ resource "kubernetes_config_map_v1" "traefik" {
                 permanent: true
         websecure:
           address: ":443"
+          http:
+            tls: {}
         traefik:
           address: ":8080"
 
@@ -123,6 +124,7 @@ resource "kubernetes_config_map_v1" "traefik" {
           allowCrossNamespace: true
         kubernetesIngress:
           allowExternalNameServices: true
+          ingressClass: traefik
 
       certificatesResolvers:
         letsencrypt:
@@ -138,20 +140,11 @@ resource "kubernetes_config_map_v1" "traefik" {
 
       accessLog:
         format: json
-        filters:
-          statusCodes:
-            - "200-299"
-            - "300-399"
-            - "400-499"
-            - "500-599"
 
       metrics:
         prometheus:
           addEntryPointsLabels: true
           addServicesLabels: true
-
-      tracing:
-        addInternals: false
     EOT
   }
 
@@ -215,7 +208,8 @@ resource "kubernetes_deployment_v1" "traefik" {
             "--configfile=/config/traefik.yml",
             "--providers.kubernetesingress",
             "--providers.kubernetescrd",
-            "--ping", # Habilita explicitamente o ping via flag também
+            "--providers.kubernetesingress.ingressclass=traefik",
+            "--ping",
           ]
 
           port {
@@ -295,14 +289,24 @@ resource "kubernetes_deployment_v1" "traefik" {
   ]
 }
 
+# IngressClass para Traefik
+resource "kubernetes_ingress_class_v1" "traefik" {
+  metadata {
+    name = "traefik"
+    annotations = {
+      "ingressclass.kubernetes.io/is-default-class" = "true"
+    }
+  }
+  spec {
+    controller = "traefik.io/ingress-controller"
+  }
+}
+
 # Service LoadBalancer
 resource "kubernetes_service_v1" "traefik" {
   metadata {
     name      = "traefik"
     namespace = kubernetes_namespace_v1.traefik.metadata[0].name
-    annotations = {
-      "tailscale.com/expose" = "true"
-    }
   }
 
   spec {
@@ -332,30 +336,6 @@ resource "kubernetes_service_v1" "traefik" {
   }
 
   depends_on = [kubernetes_deployment_v1.traefik]
-}
-
-# Middleware para cabeçalhos
-resource "kubernetes_manifest" "forwarded_headers" {
-  depends_on = [null_resource.traefik_crds]
-  manifest = {
-    apiVersion = "traefik.io/v1alpha1"
-    kind       = "Middleware"
-    metadata = {
-      name      = "forwarded-headers"
-      namespace = "default"
-    }
-    spec = {
-      headers = {
-        customRequestHeaders = {
-          "X-Forwarded-Proto" = "https"
-          "X-Forwarded-Host"  = "{host}"
-        }
-        customResponseHeaders = {
-          "X-Frame-Options" = "SAMEORIGIN"
-        }
-      }
-    }
-  }
 }
 
 # Secret para autenticação do dashboard
@@ -398,48 +378,47 @@ resource "kubernetes_manifest" "dashboard_auth" {
   }
 }
 
-# Dashboard Ingress
-resource "kubernetes_ingress_v1" "traefik_dashboard" {
+# Traefik IngressRoute para o Dashboard
+resource "kubernetes_manifest" "traefik_dashboard_ingress_route" {
   count = var.enable_dashboard ? 1 : 0
-
-  metadata {
-    name      = "traefik-dashboard"
-    namespace = kubernetes_namespace_v1.traefik.metadata[0].name
-    annotations = {
-      "kubernetes.io/ingress.class"                      = "traefik"
-      "cert-manager.io/cluster-issuer"                   = "letsencrypt-cloudflare"
-      "traefik.ingress.kubernetes.io/router.entrypoints" = "websecure"
-      "traefik.ingress.kubernetes.io/router.middlewares" = "${kubernetes_namespace_v1.traefik.metadata[0].name}-dashboard-auth@kubernetescrd"
-    }
-  }
-
-  spec {
-    tls {
-      hosts       = ["traefik.${var.domain_name}"]
-      secret_name = "traefik-dashboard-tls"
-    }
-
-    rule {
-      host = "traefik.${var.domain_name}"
-      http {
-        path {
-          path_type = "Prefix"
-          path      = "/"
-          backend {
-            service {
-              name = kubernetes_service_v1.traefik.metadata[0].name
-              port {
-                number = 8080
-              }
-            }
-          }
-        }
-      }
-    }
-  }
 
   depends_on = [
     kubernetes_service_v1.traefik,
-    kubernetes_manifest.dashboard_auth
+    kubernetes_manifest.dashboard_auth,
+    kubernetes_ingress_class_v1.traefik,
+    null_resource.traefik_crds # Garante que o CRD IngressRoute exista
   ]
+
+  manifest = {
+    apiVersion = "traefik.io/v1alpha1"
+    kind       = "IngressRoute"
+    metadata = {
+      name      = "traefik-dashboard"
+      namespace = kubernetes_namespace_v1.traefik.metadata[0].name
+    }
+    spec = {
+      entryPoints = ["websecure"]
+      routes = [
+        {
+          match = "Host(`traefik.${var.domain_name}`) && PathPrefix(`/dashboard`)"
+          kind  = "Rule"
+          services = [
+            {
+              name = "api@internal" # Serviço interno do Traefik para o dashboard
+              kind = "TraefikService"
+            }
+          ]
+          middlewares = [
+            {
+              name = kubernetes_manifest.dashboard_auth[0].metadata[0].name
+            }
+          ]
+        }
+      ]
+      tls = {
+        secretName = "traefik-dashboard-tls" # Usa o certificado gerado pelo Cert-Manager
+        certResolver = "letsencrypt"
+      }
+    }
+  }
 }
