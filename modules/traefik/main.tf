@@ -323,7 +323,7 @@ resource "kubernetes_service_v1" "traefik" {
   depends_on = [kubernetes_deployment_v1.traefik]
 }
 
-# Certificado SSL no namespace 'traefik' (Avocadotech)
+# Certificado para o domínio principal (via Cert-Manager)
 resource "kubernetes_manifest" "traefik_certs" {
   manifest = {
     apiVersion = "cert-manager.io/v1"
@@ -401,7 +401,7 @@ resource "kubernetes_manifest" "dashboard_auth" {
   }
 }
 
-# Rota Única para o Dashboard (SUPORTANDO AMBOS OS DOMÍNIOS)
+# Traefik IngressRoute para o Dashboard (SUPORTANDO AMBOS OS DOMÍNIOS)
 resource "kubernetes_manifest" "traefik_dashboard_native" {
   count = var.enable_dashboard ? 1 : 0
 
@@ -424,17 +424,22 @@ resource "kubernetes_manifest" "traefik_dashboard_native" {
       entryPoints = ["websecure"]
       routes = [
         {
-          # Atende tanto o domínio real quanto o do Tailscale
-          match = "Host(`traefik.${var.domain_name}`) || Host(`avocado.tail799250.ts.net`) && (PathPrefix(`/dashboard`) || PathPrefix(`/api`))"
+          match = "Host(`traefik.${var.domain_name}`) && (PathPrefix(`/dashboard`) || PathPrefix(`/api`))"
+          kind  = "Rule"
+          services = [{ name = "api@internal", kind = "TraefikService" }]
+          middlewares = [{ name = "dashboard-auth", namespace = "traefik" }]
+        },
+        {
+          match = "Host(`avocado.tail799250.ts.net`) && (PathPrefix(`/dashboard`) || PathPrefix(`/api`))"
           kind  = "Rule"
           services = [{ name = "api@internal", kind = "TraefikService" }]
           middlewares = [{ name = "dashboard-auth", namespace = "traefik" }]
         }
       ]
       tls = {
-        # Como o Traefik usa SNI, ele vai procurar o certificado que bate com o host.
-        # Ao deixar o tls vazio (mas presente), ele consulta o TLSStore ou outros segredos no namespace.
-        # No entanto, o Terraform reclama se for null, então vamos ser explícitos com uma lista vazia de options.
+        # O segredo tailscale-certs deve ser criado manualmente via kubectl primeiro
+        # para que o SSL do domínio tailscale fique verde.
+        # Se não existir, o Traefik usará o default (traefik-certs).
         options = {}
       }
     }
