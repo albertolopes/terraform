@@ -4,11 +4,17 @@ metadata:
   name: keycloak-host-ingress
   namespace: default
   annotations:
-    traefik.ingress.kubernetes.io/router.entrypoints: web
+    kubernetes.io/ingress.class: traefik
+    cert-manager.io/cluster-issuer: letsencrypt-cloudflare
+    traefik.ingress.kubernetes.io/router.entrypoints: websecure
 spec:
   ingressClassName: traefik
+  tls:
+    - hosts:
+        - keycloak.avocadotech.site
+      secretName: nginx-certs # Usa o certificado wildcard já emitido
   rules:
-    - host: keycloak.127.0.0.1.nip.io
+    - host: keycloak.avocadotech.site
       http:
         paths:
           - path: /

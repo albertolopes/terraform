@@ -100,7 +100,6 @@ resource "kubernetes_config_map_v1" "traefik" {
         dashboard: ${var.enable_dashboard}
         debug: false
 
-      # Habilita o endpoint de Ping para Health Checks
       ping:
         entryPoint: traefik
 
@@ -158,11 +157,10 @@ resource "kubernetes_config_map_v1" "traefik" {
   depends_on = [kubernetes_namespace_v1.traefik]
 }
 
-# Apply Traefik CRDs using kubectl
+# Apply Traefik CRDs
 resource "null_resource" "traefik_crds" {
   triggers = {
     namespace_name = kubernetes_namespace_v1.traefik.metadata[0].name
-    crd_url_hash = sha256("https://raw.githubusercontent.com/traefik/traefik/v3.3/docs/content/reference/dynamic-configuration/kubernetes-crd-definition-v1.yml")
   }
 
   provisioner "local-exec" {
@@ -358,13 +356,6 @@ resource "kubernetes_manifest" "forwarded_headers" {
   }
 }
 
-# Gerar senha htpasswd usando o provider random
-resource "random_password" "dashboard_htpasswd" {
-  count = var.enable_dashboard ? 1 : 0
-  length  = 16
-  special = false
-}
-
 # Secret para autenticação do dashboard
 resource "kubernetes_secret_v1" "dashboard_auth" {
   count = var.enable_dashboard ? 1 : 0
@@ -405,7 +396,7 @@ resource "kubernetes_manifest" "dashboard_auth" {
   }
 }
 
-# Dashboard Ingress (opcional)
+# Dashboard Ingress (Com SSL Real via Cert-Manager)
 resource "kubernetes_ingress_v1" "traefik_dashboard" {
   count = var.enable_dashboard ? 1 : 0
 
@@ -413,6 +404,8 @@ resource "kubernetes_ingress_v1" "traefik_dashboard" {
     name      = "traefik-dashboard"
     namespace = kubernetes_namespace_v1.traefik.metadata[0].name
     annotations = {
+      "kubernetes.io/ingress.class"                      = "traefik"
+      "cert-manager.io/cluster-issuer"                   = "letsencrypt-cloudflare"
       "traefik.ingress.kubernetes.io/router.entrypoints" = "websecure"
       "traefik.ingress.kubernetes.io/router.middlewares" = "${kubernetes_namespace_v1.traefik.metadata[0].name}-dashboard-auth@kubernetescrd"
     }
@@ -421,7 +414,7 @@ resource "kubernetes_ingress_v1" "traefik_dashboard" {
   spec {
     tls {
       hosts       = ["traefik.${var.domain_name}"]
-      secret_name = "traefik-dashboard-tls"
+      secret_name = "traefik-dashboard-tls" # O cert-manager vai criar este segredo aqui
     }
 
     rule {

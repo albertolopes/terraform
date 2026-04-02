@@ -4,11 +4,28 @@ metadata:
   name: minio-host-ingress
   namespace: default
   annotations:
-    traefik.ingress.kubernetes.io/router.entrypoints: web
+    kubernetes.io/ingress.class: traefik
+    cert-manager.io/cluster-issuer: letsencrypt-cloudflare
+    traefik.ingress.kubernetes.io/router.entrypoints: websecure
 spec:
   ingressClassName: traefik
+  tls:
+    - hosts:
+        - minio.avocadotech.site
+        - minio-console.avocadotech.site
+      secretName: nginx-certs # Usa o certificado wildcard já emitido
   rules:
-    - host: minio.127.0.0.1.nip.io
+    - host: minio.avocadotech.site
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: minio
+                port:
+                  number: 9000
+    - host: minio-console.avocadotech.site
       http:
         paths:
           - path: /
@@ -18,17 +35,3 @@ spec:
                 name: minio
                 port:
                   number: 9001
-          - path: /api
-            pathType: Prefix
-            backend:
-              service:
-                name: minio
-                port:
-                  number: 9000
-          - path: /minio
-            pathType: Prefix
-            backend:
-              service:
-                name: minio
-                port:
-                  number: 9000
