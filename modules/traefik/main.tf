@@ -84,7 +84,7 @@ resource "kubernetes_cluster_role_binding_v1" "traefik" {
   ]
 }
 
-# ConfigMap do Traefik (TOTALMENTE LIMPO)
+# ConfigMap do Traefik (AJUSTADO PARA DEBUG E INSECURE API)
 resource "kubernetes_config_map_v1" "traefik" {
   metadata {
     name      = "traefik-config"
@@ -98,7 +98,7 @@ resource "kubernetes_config_map_v1" "traefik" {
 
       api:
         dashboard: true
-        insecure: false
+        insecure: true # Habilitado para ferramentas internas
 
       ping:
         entryPoint: traefik
@@ -114,6 +114,8 @@ resource "kubernetes_config_map_v1" "traefik" {
                 permanent: true
         websecure:
           address: ":443"
+          http:
+            tls: {}
         traefik:
           address: ":8080"
 
@@ -125,7 +127,7 @@ resource "kubernetes_config_map_v1" "traefik" {
           ingressClass: traefik
 
       log:
-        level: INFO
+        level: DEBUG # Aumentado para diagnóstico
         format: json
 
       accessLog:
@@ -323,28 +325,6 @@ resource "kubernetes_service_v1" "traefik" {
   depends_on = [kubernetes_deployment_v1.traefik]
 }
 
-# Certificate para o Dashboard
-resource "kubernetes_manifest" "traefik_dashboard_cert" {
-  count = var.enable_dashboard ? 1 : 0
-
-  manifest = {
-    apiVersion = "cert-manager.io/v1"
-    kind       = "Certificate"
-    metadata = {
-      name      = "traefik-dashboard-cert"
-      namespace = kubernetes_namespace_v1.traefik.metadata[0].name
-    }
-    spec = {
-      secretName = "traefik-dashboard-tls"
-      issuerRef = {
-        name = "letsencrypt-cloudflare"
-        kind = "ClusterIssuer"
-      }
-      dnsNames = ["traefik.${var.domain_name}"]
-    }
-  }
-}
-
 # Secret para autenticação do dashboard
 resource "kubernetes_secret_v1" "dashboard_auth" {
   count = var.enable_dashboard ? 1 : 0
@@ -385,7 +365,7 @@ resource "kubernetes_manifest" "dashboard_auth" {
   }
 }
 
-# Traefik IngressRoute para o Dashboard (CORREÇÃO FINAL TLS)
+# Traefik IngressRoute para o Dashboard (USANDO CERTIFICADO WILDCARD DO NAMESPACE DEFAULT)
 resource "kubernetes_manifest" "traefik_dashboard_ingress_route" {
   count = var.enable_dashboard ? 1 : 0
 
@@ -393,7 +373,6 @@ resource "kubernetes_manifest" "traefik_dashboard_ingress_route" {
     kubernetes_service_v1.traefik,
     kubernetes_manifest.dashboard_auth,
     kubernetes_ingress_class_v1.traefik,
-    kubernetes_manifest.traefik_dashboard_cert,
     null_resource.traefik_crds
   ]
 
@@ -425,7 +404,7 @@ resource "kubernetes_manifest" "traefik_dashboard_ingress_route" {
         }
       ]
       tls = {
-        secretName = "traefik-dashboard-tls"
+        secretName = "default/nginx-certs" # Referência cruzada para o certificado wildcard já pronto
       }
     }
   }
