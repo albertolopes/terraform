@@ -127,7 +127,7 @@ resource "kubernetes_config_map_v1" "traefik" {
           ingressClass: traefik
 
       log:
-        level: INFO # Voltando para INFO agora que descobrimos o erro
+        level: INFO
         format: json
 
       accessLog:
@@ -325,7 +325,7 @@ resource "kubernetes_service_v1" "traefik" {
   depends_on = [kubernetes_deployment_v1.traefik]
 }
 
-# Certificado SSL no namespace 'traefik' (GERADO PELO CERT-MANAGER)
+# Certificado SSL no namespace 'traefik'
 resource "kubernetes_manifest" "traefik_certs" {
   manifest = {
     apiVersion = "cert-manager.io/v1"
@@ -335,7 +335,7 @@ resource "kubernetes_manifest" "traefik_certs" {
       namespace = kubernetes_namespace_v1.traefik.metadata[0].name
     }
     spec = {
-      secretName = "traefik-certs" # Local ao namespace
+      secretName = "traefik-certs"
       issuerRef = {
         name = "letsencrypt-cloudflare"
         kind = "ClusterIssuer"
@@ -387,8 +387,8 @@ resource "kubernetes_manifest" "dashboard_auth" {
   }
 }
 
-# Traefik IngressRoute para o Dashboard (CORREÇÃO FINAL)
-resource "kubernetes_manifest" "traefik_dashboard_ingress_route" {
+# Traefik IngressRoute para o Dashboard (NOMES LIMPIDAMENTE NOVOS)
+resource "kubernetes_manifest" "traefik_dashboard_native" {
   count = var.enable_dashboard ? 1 : 0
 
   depends_on = [
@@ -403,7 +403,7 @@ resource "kubernetes_manifest" "traefik_dashboard_ingress_route" {
     apiVersion = "traefik.io/v1alpha1"
     kind       = "IngressRoute"
     metadata = {
-      name      = "traefik-dashboard"
+      name      = "traefik-dashboard-native" # Renomeado para forçar refresh
       namespace = kubernetes_namespace_v1.traefik.metadata[0].name
     }
     spec = {
@@ -427,7 +427,7 @@ resource "kubernetes_manifest" "traefik_dashboard_ingress_route" {
         }
       ]
       tls = {
-        secretName = "traefik-certs" # Referencia o segredo local do próprio namespace
+        secretName = "traefik-certs"
       }
     }
   }
