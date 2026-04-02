@@ -323,28 +323,6 @@ resource "kubernetes_service_v1" "traefik" {
   depends_on = [kubernetes_deployment_v1.traefik]
 }
 
-# Certificado SSL no namespace 'traefik' (avocadotech.site)
-resource "kubernetes_manifest" "traefik_certs" {
-  manifest = {
-    apiVersion = "cert-manager.io/v1"
-    kind       = "Certificate"
-    metadata = {
-      name      = "traefik-certs"
-      namespace = kubernetes_namespace_v1.traefik.metadata[0].name
-    }
-    spec = {
-      secretName = "traefik-certs"
-      issuerRef = {
-        name = "letsencrypt-cloudflare"
-        kind = "ClusterIssuer"
-      }
-      dnsNames = [
-        "traefik.${var.domain_name}"
-      ]
-    }
-  }
-}
-
 # Secret para autenticação do dashboard
 resource "kubernetes_secret_v1" "dashboard_auth" {
   count = var.enable_dashboard ? 1 : 0
@@ -385,38 +363,37 @@ resource "kubernetes_manifest" "dashboard_auth" {
   }
 }
 
-# IngressRoute Único com múltiplos certificados (SINTAXE CORRETA)
-resource "kubernetes_manifest" "traefik_dashboard_unified" {
+# Traefik IngressRoute Exclusivo para o Domínio do Tailscale
+resource "kubernetes_manifest" "traefik_dashboard_tailscale" {
   count = var.enable_dashboard ? 1 : 0
 
   depends_on = [
     kubernetes_service_v1.traefik,
     kubernetes_manifest.dashboard_auth,
     kubernetes_ingress_class_v1.traefik,
-    kubernetes_manifest.traefik_certs,
     null_resource.traefik_crds
   ]
 
   manifest = {
     apiVersion = "traefik.io/v1alpha1"
     kind       = "IngressRoute"
-    metadata = {
-      name      = "traefik-dashboard-unified"
+    metadata {
+      name      = "traefik-dashboard-tailscale"
       namespace = kubernetes_namespace_v1.traefik.metadata[0].name
     }
     spec = {
       entryPoints = ["websecure"]
       routes = [
         {
-          # Sintaxe corrigida para múltiplos hosts com OR (||)
-          match = "(Host(`traefik.${var.domain_name}`) || Host(`avocado.tail799250.ts.net`)) && (PathPrefix(`/dashboard`) || PathPrefix(`/api`))"
+          # Usa a variável de domínio que agora será o seu .ts.net
+          match = "Host(`${var.domain_name}`) && (PathPrefix(`/dashboard`) || PathPrefix(`/api`))"
           kind  = "Rule"
           services = [{ name = "api@internal", kind = "TraefikService" }]
           middlewares = [{ name = "dashboard-auth", namespace = "traefik" }]
         }
       ]
       tls = {
-        # Deixando o secretName fora para que o Traefik escolha dinamicamente no namespace
+        secretName = "tailscale-certs" # O segredo que você criou manualmente
       }
     }
   }
