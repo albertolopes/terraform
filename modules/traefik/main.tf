@@ -363,7 +363,7 @@ resource "kubernetes_manifest" "dashboard_auth" {
   }
 }
 
-# Traefik IngressRoute Exclusivo para o Domínio do Tailscale
+# IngressRoute para o Dashboard usando o domínio nativo do Tailscale (SINTAXE CORRIGIDA)
 resource "kubernetes_manifest" "traefik_dashboard_tailscale" {
   count = var.enable_dashboard ? 1 : 0
 
@@ -377,7 +377,7 @@ resource "kubernetes_manifest" "traefik_dashboard_tailscale" {
   manifest = {
     apiVersion = "traefik.io/v1alpha1"
     kind       = "IngressRoute"
-    metadata {
+    metadata = {
       name      = "traefik-dashboard-tailscale"
       namespace = kubernetes_namespace_v1.traefik.metadata[0].name
     }
@@ -385,7 +385,6 @@ resource "kubernetes_manifest" "traefik_dashboard_tailscale" {
       entryPoints = ["websecure"]
       routes = [
         {
-          # Usa a variável de domínio que agora será o seu .ts.net
           match = "Host(`${var.domain_name}`) && (PathPrefix(`/dashboard`) || PathPrefix(`/api`))"
           kind  = "Rule"
           services = [{ name = "api@internal", kind = "TraefikService" }]
@@ -393,7 +392,7 @@ resource "kubernetes_manifest" "traefik_dashboard_tailscale" {
         }
       ]
       tls = {
-        secretName = "tailscale-certs" # O segredo que você criou manualmente
+        secretName = "tailscale-certs"
       }
     }
   }
