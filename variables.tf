@@ -4,6 +4,12 @@ variable "domain_name" {
   default     = "avocadotech.site"
 }
 
+variable "admin_email" {
+  description = "Email for Let's Encrypt"
+  type        = string
+  default     = "admin@avocadotech.site"
+}
+
 # --- Usernames ---
 variable "keycloak_admin_user" {
   description = "The admin username for Keycloak."
@@ -16,8 +22,11 @@ variable "minio_access_key" {
   type        = string
   default     = "minioadmin"
 }
+
 variable "cloudflare_api_token" {
   description = "The API Token for Cloudflare DNS-01 challenge."
   type        = string
   sensitive   = true
 }
+
+

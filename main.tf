@@ -51,10 +51,23 @@ module "keycloak" {
 }
 
 # --- Servidor Web ---
-module "nginx" {
-  source      = "./modules/nginx"
+# Módulo Traefik
+module "traefik" {
+  source = "./modules/traefik"
+
   domain_name = var.domain_name
-  depends_on  = [module.k3d_cluster]
+  admin_email = var.admin_email
+
+  # Configuração opcional
+  enable_dashboard = true
+  enable_access_logs = true
+
+  # Recursos
+  replicas = 2
+  cpu_requests = "100m"
+  memory_requests = "128Mi"
+  cpu_limits = "500m"
+  memory_limits = "512Mi"
 }
 
 # --- Networking ---
@@ -63,4 +76,7 @@ module "networking" {
   domain_name          = var.domain_name
   cloudflare_api_token = var.cloudflare_api_token
   depends_on           = [module.k3d_cluster]
+}
+output "keycloak_url" {
+  value = "https://keycloak.${var.domain_name}"
 }

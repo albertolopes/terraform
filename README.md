@@ -6,7 +6,7 @@ Ele implanta os seguintes serviços, todos acessíveis via Ingress com SSL autom
 - **Keycloak:** Gerenciamento de Identidade e Acesso.
 - **Minio:** Armazenamento de objetos compatível com S3.
 - **PostgreSQL:** Banco de dados relacional para o Keycloak.
-- **Nginx:** Servidor web de exemplo e Ingress Controller.
+- **Traefik:** Ingress Controller e roteador de tráfego para os serviços.
 - **ExternalDNS:** Sincronização automática de registros DNS com o Cloudflare.
 - **Cert-Manager:** Gerenciamento automático de certificados SSL.
 
@@ -29,12 +29,12 @@ Para que o DNS e o SSL funcionem, você precisa configurar as credenciais do Clo
 
 ```hcl
 cloudflare_api_token = "SEU_TOKEN_DE_API_DO_CLOUDFLARE"
-cloudflare_email     = "SEU_EMAIL_DO_CLOUDFLARE"
+# cloudflare_email     = "SEU_EMAIL_DO_CLOUDFLARE" # Não é mais necessário com API Token
 ```
 
-## 3. Implantação (O Fluxo de 4 Etapas)
+## 3. Implantação (O Fluxo em Etapas para CRDs)
 
-Devido a dependências de CRDs (Custom Resource Definitions), siga esta ordem estritamente para evitar erros de "resource not found".
+Devido a dependências de CRDs (Custom Resource Definitions), é **CRÍTICO** seguir esta ordem estritamente para evitar erros de "API did not recognize GroupVersionKind" ou "no matches for kind".
 
 **Passo 0: Limpeza (Opcional, mas recomendado para recomeçar do zero)**
 ```sh
@@ -42,6 +42,7 @@ k3d cluster delete mycluster
 rm -f .terraform.lock.hcl
 rm -rf .terraform
 rm -f terraform.tfstate*
+rm -f .k3d_kubeconfig # Remova o kubeconfig gerado
 ```
 
 **Passo 1: Inicializar o Terraform**
@@ -49,29 +50,29 @@ rm -f terraform.tfstate*
 terraform init
 ```
 
-**Passo 2: Criar a Infraestrutura Básica**
-Isso cria o cluster e os serviços base (Banco, Keycloak, Nginx, Minio).
+**Passo 2: Criar o Cluster k3d**
+Esta etapa cria o cluster Kubernetes e gera o arquivo `.k3d_kubeconfig`.
 ```sh
-terraform apply -target=module.k3d_cluster -target=module.postgres -target=module.minio -target=module.keycloak -target=module.nginx
+terraform apply -target=module.k3d_cluster
 ```
 Responda `yes`.
 
-**Passo 3: Instalar o Cert-Manager (Crítico)**
-Esta etapa instala os CRDs necessários para os certificados. Deve ser feita separadamente.
+**Passo 3: Instalar os CRDs do Cert-Manager**
+Instala o Cert-Manager via Helm, que é responsável por criar os CRDs de `ClusterIssuer` e `Certificate`.
 ```sh
 terraform apply -target=module.networking.helm_release.cert_manager
 ```
 Responda `yes`.
 
-**Passo 4: Configurar Certificados e Finalizar**
-Agora que as CRDs existem, podemos criar os emissores e finalizar a configuração.
+**Passo 4: Instalar os CRDs do Traefik**
+Aplica os CRDs necessários para o Traefik reconhecer recursos como `Middleware`.
 ```sh
-terraform apply -target=module.networking
+terraform apply -target=module.traefik.null_resource.traefik_crds
 ```
 Responda `yes`.
 
-**Passo 5: Atualização Final (Garantia)**
-Garante que o Nginx e outros serviços detectem os certificados recém-criados.
+**Passo 5: Aplicar o Restante da Infraestrutura**
+Agora que todos os CRDs estão instalados, o Terraform pode aplicar o restante dos serviços (Keycloak, Minio, Traefik, etc.) e configurar os Ingresses e Certificados.
 ```sh
 terraform apply
 ```
@@ -93,6 +94,7 @@ Após a conclusão, os serviços estarão disponíveis via HTTPS.
 - **Keycloak:** `https://keycloak.avocadotech.site`
 - **Minio Console:** `https://minio-console.avocadotech.site`
 - **Minio API (S3):** `https://minio.avocadotech.site`
+- **Traefik Dashboard:** `https://traefik.avocadotech.site`
 - **API Customizada:** `https://api.avocadotech.site`
 
 ### Recuperando Senhas
@@ -117,12 +119,18 @@ As senhas são geradas aleatoriamente e armazenadas no estado do Terraform. Para
   ```sh
   terraform output -raw postgres_password
   ```
+  
+**Traefik Dashboard:**
+- Usuário: (definido em `variables.tf` ou `terraform.tfvars`)
+- Senha:
+  ```sh
+  terraform output -raw traefik_dashboard_password
+  ```
 
 ## 5. Solução de Problemas Comuns (Troubleshooting)
 
-### Nginx: "cannot load certificate ... no such file"
-**Sintoma:** O pod do Nginx fica reiniciando com erro de `emerg` dizendo que não acha `tls.crt`.
-**Causa:** O Certificado ainda não foi emitido pelo Cert-Manager, então o segredo `nginx-certs` não existe.
+### Cert-Manager: Travado em "Pending" ou sem Eventos
+**Sintoma:** O certificado não é emitido. `kubectl describe challenge` não mostra eventos.
 **Solução:**
 1.  Verifique se o Cert-Manager está rodando:
     ```sh
@@ -133,46 +141,25 @@ As senhas são geradas aleatoriamente e armazenadas no estado do Terraform. Para
     kubectl get certificate
     ```
     Se estiver `READY: False`, aguarde.
-3.  Se o segredo já existe (`kubectl get secret nginx-certs`) e o erro persiste, o Nginx pode estar com configuração antiga. Force a recriação dos pods:
-    ```sh
-    kubectl delete pods -l app=nginx
-    ```
-
-### Cert-Manager: Travado em "Pending" ou sem Eventos
-**Sintoma:** O certificado não é emitido. `kubectl describe challenge` não mostra eventos.
-**Solução:**
-1.  Apague o challenge travado para forçar o Cert-Manager a tentar de novo:
+3.  Apague o challenge travado para forçar o Cert-Manager a tentar de novo:
     ```sh
     kubectl delete challenge <nome-do-challenge-travado>
     ```
-2.  Se persistir, reinicie o controlador do Cert-Manager:
+4.  Se persistir, reinicie o controlador do Cert-Manager:
     ```sh
     kubectl rollout restart deployment -n cert-manager
     ```
 
-### Nginx: Redirecionamento Incorreto ou Configuração Antiga
-**Sintoma:** Você acessa `minio-console...` mas cai no Keycloak, ou o Nginx não reflete mudanças recentes no `nginx.conf`.
-**Causa:** O Terraform atualizou o ConfigMap, mas o Pod do Nginx não recarregou o arquivo.
-**Solução:**
-1.  Force a atualização do ConfigMap:
-    ```sh
-    terraform taint module.nginx.kubernetes_config_map_v1.nginx_config
-    terraform apply -target=module.nginx.kubernetes_config_map_v1.nginx_config
-    ```
-2.  Mate os pods para forçar a leitura da nova configuração:
-    ```sh
-    kubectl delete pods -l app=nginx
-    ```
-
-### Erro: "deployments.apps nginx already exists"
+### Erro: "deployments.apps <recurso> already exists"
 **Sintoma:** O Terraform falha ao tentar criar um recurso que já existe no cluster (mas não no estado).
 **Solução:** Importe o recurso para o estado do Terraform:
 ```sh
-terraform import module.nginx.kubernetes_deployment_v1.nginx default/nginx
+terraform import <tipo_do_recurso>.<nome_do_recurso> <namespace>/<nome_no_cluster>
+# Exemplo: terraform import kubernetes_deployment_v1.keycloak default/keycloak
 ```
 Ou apague o recurso do cluster para deixar o Terraform recriar:
 ```sh
-kubectl delete deployment nginx
+kubectl delete deployment <nome_do_deployment>
 ```
 
 ### Conexão via Tailscale / VPN

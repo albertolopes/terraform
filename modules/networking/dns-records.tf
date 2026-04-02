@@ -1,9 +1,9 @@
 resource "kubernetes_ingress_v1" "external_dns_targets" {
   metadata {
     name      = "external-dns-targets"
-    namespace = "default"
+    namespace = "traefik" # Coloquei no mesmo namespace do Traefik
     annotations = {
-      "kubernetes.io/ingress.class" = "nginx"
+      "kubernetes.io/ingress.class" = "traefik"
       # Força a criação de CNAMEs apontando para o Funnel
       "external-dns.alpha.kubernetes.io/target" = var.tailscale_funnel_url
       # Desabilita o proxy do Cloudflare (nuvem cinza)
@@ -12,6 +12,7 @@ resource "kubernetes_ingress_v1" "external_dns_targets" {
   }
 
   spec {
+    ingress_class_name = "traefik"
     # Lista de todos os domínios que você quer criar no Cloudflare
     rule {
       host = "keycloak.${var.domain_name}"
@@ -21,7 +22,7 @@ resource "kubernetes_ingress_v1" "external_dns_targets" {
           path_type = "Prefix"
           backend {
             service {
-              name = "nginx"
+              name = "traefik"
               port {
                 number = 80
               }
@@ -38,7 +39,7 @@ resource "kubernetes_ingress_v1" "external_dns_targets" {
           path_type = "Prefix"
           backend {
             service {
-              name = "nginx"
+              name = "traefik"
               port {
                 number = 80
               }
@@ -55,7 +56,7 @@ resource "kubernetes_ingress_v1" "external_dns_targets" {
           path_type = "Prefix"
           backend {
             service {
-              name = "nginx"
+              name = "traefik"
               port {
                 number = 80
               }
@@ -72,7 +73,7 @@ resource "kubernetes_ingress_v1" "external_dns_targets" {
           path_type = "Prefix"
           backend {
             service {
-              name = "nginx"
+              name = "traefik"
               port {
                 number = 80
               }

@@ -12,3 +12,11 @@ output "minio_secret_key" {
   value     = random_password.minio_secret_key.result
   sensitive = true
 }
+
+output "traefik_loadbalancer_ip" {
+  value = module.traefik.loadbalancer_ip
+}
+
+output "traefik_dashboard_url" {
+  value = module.traefik.dashboard_url
+}

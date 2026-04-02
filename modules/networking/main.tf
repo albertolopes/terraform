@@ -40,6 +40,18 @@ resource "helm_release" "cert_manager" {
   ]
 }
 
+# Wait for Cert-Manager CRDs to be ready
+resource "null_resource" "wait_for_cert_manager_crds" {
+  depends_on = [helm_release.cert_manager]
+
+  provisioner "local-exec" {
+    command = "kubectl wait --for=condition=established --timeout=60s crd/clusterissuers.cert-manager.io"
+    environment = {
+      KUBECONFIG = "${path.cwd}/.k3d_kubeconfig"
+    }
+  }
+}
+
 # --- Cloudflare API Token Secret ---
 resource "kubernetes_secret_v1" "cloudflare_api_token" {
   depends_on = [helm_release.cert_manager]
@@ -55,7 +67,10 @@ resource "kubernetes_secret_v1" "cloudflare_api_token" {
 
 # --- ClusterIssuer (Let's Encrypt + DNS-01) ---
 resource "kubernetes_manifest" "letsencrypt_issuer" {
-  depends_on = [kubernetes_secret_v1.cloudflare_api_token]
+  depends_on = [
+    kubernetes_secret_v1.cloudflare_api_token,
+    null_resource.wait_for_cert_manager_crds
+  ]
   manifest = {
     apiVersion = "cert-manager.io/v1"
     kind       = "ClusterIssuer"

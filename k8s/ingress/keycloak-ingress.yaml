@@ -4,9 +4,9 @@ metadata:
   name: keycloak-host-ingress
   namespace: default
   annotations:
-    kubernetes.io/ingress.class: "nginx"
+    traefik.ingress.kubernetes.io/router.entrypoints: web
 spec:
-  ingressClassName: nginx
+  ingressClassName: traefik
   rules:
     - host: keycloak.127.0.0.1.nip.io
       http:
