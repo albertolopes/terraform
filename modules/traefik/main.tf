@@ -98,7 +98,7 @@ resource "kubernetes_config_map_v1" "traefik" {
 
       api:
         dashboard: ${var.enable_dashboard}
-        insecure: false # Dashboard não é mais acessado via insecure API
+        insecure: false
 
       ping:
         entryPoint: traefik
@@ -386,7 +386,7 @@ resource "kubernetes_manifest" "traefik_dashboard_ingress_route" {
     kubernetes_service_v1.traefik,
     kubernetes_manifest.dashboard_auth,
     kubernetes_ingress_class_v1.traefik,
-    null_resource.traefik_crds # Garante que o CRD IngressRoute exista
+    null_resource.traefik_crds
   ]
 
   manifest = {
@@ -400,24 +400,24 @@ resource "kubernetes_manifest" "traefik_dashboard_ingress_route" {
       entryPoints = ["websecure"]
       routes = [
         {
-          match = "Host(`traefik.${var.domain_name}`) && PathPrefix(`/dashboard`)"
+          match = "Host(`traefik.${var.domain_name}`) && (PathPrefix(`/dashboard`) || PathPrefix(`/api`))"
           kind  = "Rule"
           services = [
             {
-              name = "api@internal" # Serviço interno do Traefik para o dashboard
+              name = "api@internal"
               kind = "TraefikService"
             }
           ]
           middlewares = [
             {
-              name = kubernetes_manifest.dashboard_auth[0].metadata[0].name
+              name      = "dashboard-auth" # Nome literal
+              namespace = kubernetes_namespace_v1.traefik.metadata[0].name
             }
           ]
         }
       ]
       tls = {
-        secretName = "traefik-dashboard-tls" # Usa o certificado gerado pelo Cert-Manager
-        certResolver = "letsencrypt"
+        secretName = "traefik-dashboard-tls"
       }
     }
   }
