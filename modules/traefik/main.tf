@@ -100,8 +100,9 @@ resource "kubernetes_config_map_v1" "traefik" {
         dashboard: ${var.enable_dashboard}
         debug: false
 
+      # Habilita o endpoint de Ping para Health Checks (CORRIGIDO)
       ping:
-        entryPoint: traefik
+        entryPoint: websecure
 
       entryPoints:
         web:
@@ -244,7 +245,8 @@ resource "kubernetes_deployment_v1" "traefik" {
           liveness_probe {
             http_get {
               path = "/ping"
-              port = 8080
+              port = 443
+              scheme = "HTTPS"
             }
             initial_delay_seconds = 10
             period_seconds        = 10
@@ -253,7 +255,8 @@ resource "kubernetes_deployment_v1" "traefik" {
           readiness_probe {
             http_get {
               path = "/ping"
-              port = 8080
+              port = 443
+              scheme = "HTTPS"
             }
             initial_delay_seconds = 10
             period_seconds        = 10
@@ -396,7 +399,7 @@ resource "kubernetes_manifest" "dashboard_auth" {
   }
 }
 
-# Dashboard Ingress (Com SSL Real via Cert-Manager)
+# Dashboard Ingress
 resource "kubernetes_ingress_v1" "traefik_dashboard" {
   count = var.enable_dashboard ? 1 : 0
 
@@ -414,7 +417,7 @@ resource "kubernetes_ingress_v1" "traefik_dashboard" {
   spec {
     tls {
       hosts       = ["traefik.${var.domain_name}"]
-      secret_name = "traefik-dashboard-tls" # O cert-manager vai criar este segredo aqui
+      secret_name = "traefik-dashboard-tls"
     }
 
     rule {
