@@ -84,7 +84,7 @@ resource "kubernetes_cluster_role_binding_v1" "traefik" {
   ]
 }
 
-# ConfigMap do Traefik (ACME REMOVIDO, DELEGADO AO CERT-MANAGER)
+# ConfigMap do Traefik (TOTALMENTE LIMPO)
 resource "kubernetes_config_map_v1" "traefik" {
   metadata {
     name      = "traefik-config"
@@ -97,7 +97,7 @@ resource "kubernetes_config_map_v1" "traefik" {
         sendAnonymousUsage: false
 
       api:
-        dashboard: ${var.enable_dashboard}
+        dashboard: true
         insecure: false
 
       ping:
@@ -114,8 +114,6 @@ resource "kubernetes_config_map_v1" "traefik" {
                 permanent: true
         websecure:
           address: ":443"
-          http:
-            tls: {}
         traefik:
           address: ":8080"
 
@@ -132,11 +130,6 @@ resource "kubernetes_config_map_v1" "traefik" {
 
       accessLog:
         format: json
-
-      metrics:
-        prometheus:
-          addEntryPointsLabels: true
-          addServicesLabels: true
     EOT
   }
 
@@ -330,7 +323,7 @@ resource "kubernetes_service_v1" "traefik" {
   depends_on = [kubernetes_deployment_v1.traefik]
 }
 
-# Certificate para o Dashboard (Gerenciado pelo Cert-Manager)
+# Certificate para o Dashboard
 resource "kubernetes_manifest" "traefik_dashboard_cert" {
   count = var.enable_dashboard ? 1 : 0
 
@@ -392,7 +385,7 @@ resource "kubernetes_manifest" "dashboard_auth" {
   }
 }
 
-# Traefik IngressRoute para o Dashboard
+# Traefik IngressRoute para o Dashboard (CORREÇÃO FINAL TLS)
 resource "kubernetes_manifest" "traefik_dashboard_ingress_route" {
   count = var.enable_dashboard ? 1 : 0
 
