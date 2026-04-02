@@ -4,20 +4,15 @@ metadata:
   name: keycloak-host-ingress
   namespace: default
   annotations:
-    # Anotações para compatibilidade
     kubernetes.io/ingress.class: traefik
     traefik.ingress.kubernetes.io/router.entrypoints: websecure
 spec:
-  ingressClassName: traefik # DEFINIÇÃO EXPLÍCITA
-  tls:
-    - hosts:
-        - keycloak.avocado.tail799250.ts.net
-      secretName: tailscale-certs
+  ingressClassName: traefik
   rules:
-    - host: keycloak.avocado.tail799250.ts.net
+    - host: avocado.tail799250.ts.net
       http:
         paths:
-          - path: /
+          - path: /auth
             pathType: Prefix
             backend:
               service:
