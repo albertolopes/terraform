@@ -115,7 +115,8 @@ resource "kubernetes_config_map_v1" "traefik" {
         websecure:
           address: ":443"
           http:
-            tls: {}
+            tls:
+              certResolver: letsencrypt
         traefik:
           address: ":8080"
 
@@ -410,14 +411,19 @@ resource "kubernetes_manifest" "traefik_dashboard_ingress_route" {
           ]
           middlewares = [
             {
-              name      = "dashboard-auth" # Nome literal
+              name      = "dashboard-auth"
               namespace = kubernetes_namespace_v1.traefik.metadata[0].name
             }
           ]
         }
       ]
       tls = {
-        secretName = "traefik-dashboard-tls"
+        certResolver = "letsencrypt"
+        domains = [
+          {
+            main = "traefik.${var.domain_name}"
+          }
+        ]
       }
     }
   }
