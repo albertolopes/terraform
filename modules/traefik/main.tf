@@ -84,7 +84,7 @@ resource "kubernetes_cluster_role_binding_v1" "traefik" {
   ]
 }
 
-# ConfigMap do Traefik (AJUSTADO PARA DEBUG E INSECURE API)
+# ConfigMap do Traefik
 resource "kubernetes_config_map_v1" "traefik" {
   metadata {
     name      = "traefik-config"
@@ -98,7 +98,7 @@ resource "kubernetes_config_map_v1" "traefik" {
 
       api:
         dashboard: true
-        insecure: true # Habilitado para ferramentas internas
+        insecure: true
 
       ping:
         entryPoint: traefik
@@ -127,7 +127,7 @@ resource "kubernetes_config_map_v1" "traefik" {
           ingressClass: traefik
 
       log:
-        level: DEBUG # Aumentado para diagnóstico
+        level: INFO # Voltando para INFO agora que descobrimos o erro
         format: json
 
       accessLog:
@@ -325,6 +325,28 @@ resource "kubernetes_service_v1" "traefik" {
   depends_on = [kubernetes_deployment_v1.traefik]
 }
 
+# Certificado SSL no namespace 'traefik' (GERADO PELO CERT-MANAGER)
+resource "kubernetes_manifest" "traefik_certs" {
+  manifest = {
+    apiVersion = "cert-manager.io/v1"
+    kind       = "Certificate"
+    metadata = {
+      name      = "traefik-certs"
+      namespace = kubernetes_namespace_v1.traefik.metadata[0].name
+    }
+    spec = {
+      secretName = "traefik-certs" # Local ao namespace
+      issuerRef = {
+        name = "letsencrypt-cloudflare"
+        kind = "ClusterIssuer"
+      }
+      dnsNames = [
+        "traefik.${var.domain_name}"
+      ]
+    }
+  }
+}
+
 # Secret para autenticação do dashboard
 resource "kubernetes_secret_v1" "dashboard_auth" {
   count = var.enable_dashboard ? 1 : 0
@@ -365,7 +387,7 @@ resource "kubernetes_manifest" "dashboard_auth" {
   }
 }
 
-# Traefik IngressRoute para o Dashboard (USANDO CERTIFICADO WILDCARD DO NAMESPACE DEFAULT)
+# Traefik IngressRoute para o Dashboard (CORREÇÃO FINAL)
 resource "kubernetes_manifest" "traefik_dashboard_ingress_route" {
   count = var.enable_dashboard ? 1 : 0
 
@@ -373,6 +395,7 @@ resource "kubernetes_manifest" "traefik_dashboard_ingress_route" {
     kubernetes_service_v1.traefik,
     kubernetes_manifest.dashboard_auth,
     kubernetes_ingress_class_v1.traefik,
+    kubernetes_manifest.traefik_certs,
     null_resource.traefik_crds
   ]
 
@@ -404,7 +427,7 @@ resource "kubernetes_manifest" "traefik_dashboard_ingress_route" {
         }
       ]
       tls = {
-        secretName = "default/nginx-certs" # Referência cruzada para o certificado wildcard já pronto
+        secretName = "traefik-certs" # Referencia o segredo local do próprio namespace
       }
     }
   }
