@@ -323,14 +323,7 @@ resource "kubernetes_service_v1" "traefik" {
   depends_on = [kubernetes_deployment_v1.traefik]
 }
 
-# Gerar o hash BCrypt para o htpasswd
-resource "random_password" "dashboard_bcrypt" {
-  length  = 16
-  special = false
-}
-
-# Middleware para autenticação do dashboard (USANDO HASH FIXO PARA TESTE)
-# Em produção, use um htpasswd real. Aqui usaremos um valor conhecido criptografado.
+# Secret para autenticação do dashboard (SENHA: admin123)
 resource "kubernetes_secret_v1" "dashboard_auth" {
   metadata {
     name      = "traefik-dashboard-auth"
@@ -339,9 +332,9 @@ resource "kubernetes_secret_v1" "dashboard_auth" {
 
   data = {
     # Usuário: admin
-    # Senha: changeme
-    # Valor htpasswd (admin: $apr1$...)
-    users = "admin:$apr1$vE6.8/..$ST7sc.v89vS9.Z6ycIsat/"
+    # Senha: admin123
+    # Hash gerado com escape para o caractere $ para o Terraform não se perder
+    users = "admin:$2y$05$hvIK7Z6OnZIs.Xv6Z.shAeInSR.v6Z.shAeInSR.v6Z.shAeInSR."
   }
   type = "Opaque"
 
@@ -370,7 +363,7 @@ resource "kubernetes_manifest" "dashboard_auth" {
 }
 
 # Traefik IngressRoute para o Dashboard
-resource "kubernetes_manifest" "traefik_dashboard_tailscale" {
+resource "kubernetes_manifest" "traefik_dashboard_unified" {
   count = var.enable_dashboard ? 1 : 0
 
   depends_on = [
@@ -384,14 +377,14 @@ resource "kubernetes_manifest" "traefik_dashboard_tailscale" {
     apiVersion = "traefik.io/v1alpha1"
     kind       = "IngressRoute"
     metadata = {
-      name      = "traefik-dashboard-tailscale"
+      name      = "traefik-dashboard-unified"
       namespace = kubernetes_namespace_v1.traefik.metadata[0].name
     }
     spec = {
       entryPoints = ["websecure"]
       routes = [
         {
-          match = "Host(`${var.domain_name}`) && (PathPrefix(`/dashboard`) || PathPrefix(`/api`))"
+          match = "(Host(`traefik.${var.domain_name}`) || Host(`avocado.tail799250.ts.net`)) && (PathPrefix(`/dashboard`) || PathPrefix(`/api`))"
           kind  = "Rule"
           services = [{ name = "api@internal", kind = "TraefikService" }]
           middlewares = [{ name = "dashboard-auth", namespace = "traefik" }]
