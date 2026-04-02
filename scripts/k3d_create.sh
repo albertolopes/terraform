@@ -43,8 +43,8 @@ CMD+=(--api-port "0.0.0.0:$API_PORT") # Listen on all interfaces
 CMD+=(--k3s-arg "--kubelet-arg=--max-pods=$maxpods@server:0")
 CMD+=(--k3s-arg "--disable=traefik@server:0")
 
-# Expose HTTP/HTTPS ports
-CMD+=(--port "80:80@loadbalancer" --port "443:443@loadbalancer")
+# Expose HTTP/HTTPS ports - CHANGED: 8443 for HTTPS to avoid Tailscale conflict
+CMD+=(--port "80:80@loadbalancer" --port "8443:443@loadbalancer")
 
 # Mount volumes
 VOLUME_DIRS=("$WORKDIR/volume/postgres" "$WORKDIR/volume/minio" "$WORKDIR/volume/nginx")
@@ -60,7 +60,7 @@ k3d kubeconfig get "$name" > "$KUBECONFIG_PATH"
 chmod 600 "$KUBECONFIG_PATH"
 echo "Wrote kubeconfig to $KUBECONFIG_PATH"
 
-# Wait for the cluster API to be fully ready using the initial kubeconfig
+# Wait for the cluster API to be fully ready
 echo "Waiting for Kubernetes API to be ready..."
 timeout=120
 step=5
@@ -77,18 +77,15 @@ done
 
 echo "Cluster '$name' created and API is ready."
 
-# --- AUTOMATE KUBECONFIG FIX FOR EXTERNAL ACCESS (THE FINAL, CORRECT WAY) ---
-# Get the server's primary non-localhost IP address
+# --- AUTOMATE KUBECONFIG FIX FOR EXTERNAL ACCESS ---
 SERVER_IP=$(ip -4 addr show | grep -oP '(?<=inet\s)\d+(\.\d+){3}' | grep -v '127.0.0.1' | head -n 1)
 if [ -z "$SERVER_IP" ]; then
   echo "Could not determine server's LAN IP. Kubeconfig will not be modified." >&2
   exit 1
 fi
 
-# Get the cluster name from the kubeconfig
 CLUSTER_NAME=$(kubectl --kubeconfig "$KUBECONFIG_PATH" config view -o jsonpath='{.clusters[0].name}')
 
-# Use kubectl to set the server address AND skip TLS verification
 echo "Updating kubeconfig for external access..."
 kubectl --kubeconfig "$KUBECONFIG_PATH" config set-cluster "$CLUSTER_NAME" \
   --server="https://$SERVER_IP:$API_PORT" \
