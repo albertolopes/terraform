@@ -323,17 +323,25 @@ resource "kubernetes_service_v1" "traefik" {
   depends_on = [kubernetes_deployment_v1.traefik]
 }
 
-# Secret para autenticação do dashboard
-resource "kubernetes_secret_v1" "dashboard_auth" {
-  count = var.enable_dashboard ? 1 : 0
+# Gerar o hash BCrypt para o htpasswd
+resource "random_password" "dashboard_bcrypt" {
+  length  = 16
+  special = false
+}
 
+# Middleware para autenticação do dashboard (USANDO HASH FIXO PARA TESTE)
+# Em produção, use um htpasswd real. Aqui usaremos um valor conhecido criptografado.
+resource "kubernetes_secret_v1" "dashboard_auth" {
   metadata {
     name      = "traefik-dashboard-auth"
     namespace = kubernetes_namespace_v1.traefik.metadata[0].name
   }
 
   data = {
-    users = "${var.dashboard_user}:${var.dashboard_password}"
+    # Usuário: admin
+    # Senha: changeme
+    # Valor htpasswd (admin: $apr1$...)
+    users = "admin:$apr1$vE6.8/..$ST7sc.v89vS9.Z6ycIsat/"
   }
   type = "Opaque"
 
@@ -342,8 +350,6 @@ resource "kubernetes_secret_v1" "dashboard_auth" {
 
 # Middleware para autenticação do dashboard
 resource "kubernetes_manifest" "dashboard_auth" {
-  count = var.enable_dashboard ? 1 : 0
-
   depends_on = [
     kubernetes_secret_v1.dashboard_auth,
     null_resource.traefik_crds
@@ -363,7 +369,7 @@ resource "kubernetes_manifest" "dashboard_auth" {
   }
 }
 
-# IngressRoute para o Dashboard usando o domínio nativo do Tailscale (SINTAXE CORRIGIDA)
+# Traefik IngressRoute para o Dashboard
 resource "kubernetes_manifest" "traefik_dashboard_tailscale" {
   count = var.enable_dashboard ? 1 : 0
 
