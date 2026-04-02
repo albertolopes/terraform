@@ -385,8 +385,8 @@ resource "kubernetes_manifest" "dashboard_auth" {
   }
 }
 
-# IngressRoute para Domínio Principal (Let's Encrypt)
-resource "kubernetes_manifest" "traefik_dashboard_native" {
+# IngressRoute Único com múltiplos certificados (Traefik v3 Style)
+resource "kubernetes_manifest" "traefik_dashboard_unified" {
   count = var.enable_dashboard ? 1 : 0
 
   depends_on = [
@@ -401,56 +401,23 @@ resource "kubernetes_manifest" "traefik_dashboard_native" {
     apiVersion = "traefik.io/v1alpha1"
     kind       = "IngressRoute"
     metadata = {
-      name      = "traefik-dashboard-main"
+      name      = "traefik-dashboard-unified"
       namespace = kubernetes_namespace_v1.traefik.metadata[0].name
     }
     spec = {
       entryPoints = ["websecure"]
       routes = [
         {
-          match = "Host(`traefik.${var.domain_name}`) && (PathPrefix(`/dashboard`) || PathPrefix(`/api`))"
+          match = "Host(`traefik.${var.domain_name}`, `avocado.tail799250.ts.net`) && (PathPrefix(`/dashboard`) || PathPrefix(`/api`))"
           kind  = "Rule"
           services = [{ name = "api@internal", kind = "TraefikService" }]
           middlewares = [{ name = "dashboard-auth", namespace = "traefik" }]
         }
       ]
       tls = {
+        # O Traefik v3 buscará automaticamente os certificados que batem com os Hosts acima
+        # desde que os segredos existam no namespace 'traefik'.
         secretName = "traefik-certs"
-      }
-    }
-  }
-}
-
-# IngressRoute para Domínio Tailscale (Certificado Tailscale)
-resource "kubernetes_manifest" "traefik_dashboard_tailscale" {
-  count = var.enable_dashboard ? 1 : 0
-
-  depends_on = [
-    kubernetes_service_v1.traefik,
-    kubernetes_manifest.dashboard_auth,
-    kubernetes_ingress_class_v1.traefik,
-    null_resource.traefik_crds
-  ]
-
-  manifest = {
-    apiVersion = "traefik.io/v1alpha1"
-    kind       = "IngressRoute"
-    metadata = {
-      name      = "traefik-dashboard-tailscale"
-      namespace = kubernetes_namespace_v1.traefik.metadata[0].name
-    }
-    spec = {
-      entryPoints = ["websecure"]
-      routes = [
-        {
-          match = "Host(`avocado.tail799250.ts.net`) && (PathPrefix(`/dashboard`) || PathPrefix(`/api`))"
-          kind  = "Rule"
-          services = [{ name = "api@internal", kind = "TraefikService" }]
-          middlewares = [{ name = "dashboard-auth", namespace = "traefik" }]
-        }
-      ]
-      tls = {
-        secretName = "tailscale-certs" # Segredo que você criou via kubectl
       }
     }
   }
