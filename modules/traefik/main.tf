@@ -385,7 +385,7 @@ resource "kubernetes_manifest" "dashboard_auth" {
   }
 }
 
-# Traefik IngressRoute para o Dashboard (CORREÇÃO TLS FINAL)
+# IngressRoute para Domínio Principal (Let's Encrypt)
 resource "kubernetes_manifest" "traefik_dashboard_native" {
   count = var.enable_dashboard ? 1 : 0
 
@@ -401,7 +401,7 @@ resource "kubernetes_manifest" "traefik_dashboard_native" {
     apiVersion = "traefik.io/v1alpha1"
     kind       = "IngressRoute"
     metadata = {
-      name      = "traefik-dashboard-native"
+      name      = "traefik-dashboard-main"
       namespace = kubernetes_namespace_v1.traefik.metadata[0].name
     }
     spec = {
@@ -412,7 +412,36 @@ resource "kubernetes_manifest" "traefik_dashboard_native" {
           kind  = "Rule"
           services = [{ name = "api@internal", kind = "TraefikService" }]
           middlewares = [{ name = "dashboard-auth", namespace = "traefik" }]
-        },
+        }
+      ]
+      tls = {
+        secretName = "traefik-certs"
+      }
+    }
+  }
+}
+
+# IngressRoute para Domínio Tailscale (Certificado Tailscale)
+resource "kubernetes_manifest" "traefik_dashboard_tailscale" {
+  count = var.enable_dashboard ? 1 : 0
+
+  depends_on = [
+    kubernetes_service_v1.traefik,
+    kubernetes_manifest.dashboard_auth,
+    kubernetes_ingress_class_v1.traefik,
+    null_resource.traefik_crds
+  ]
+
+  manifest = {
+    apiVersion = "traefik.io/v1alpha1"
+    kind       = "IngressRoute"
+    metadata = {
+      name      = "traefik-dashboard-tailscale"
+      namespace = kubernetes_namespace_v1.traefik.metadata[0].name
+    }
+    spec = {
+      entryPoints = ["websecure"]
+      routes = [
         {
           match = "Host(`avocado.tail799250.ts.net`) && (PathPrefix(`/dashboard`) || PathPrefix(`/api`))"
           kind  = "Rule"
@@ -421,9 +450,7 @@ resource "kubernetes_manifest" "traefik_dashboard_native" {
         }
       ]
       tls = {
-        # Removido options para evitar erro de validação.
-        # Ao fornecer uma lista de segredos, o Traefik escolherá o que bater com o host (SNI).
-        secretName = "traefik-certs"
+        secretName = "tailscale-certs" # Segredo que você criou via kubectl
       }
     }
   }
