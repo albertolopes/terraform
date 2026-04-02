@@ -114,8 +114,6 @@ resource "kubernetes_config_map_v1" "traefik" {
                 permanent: true
         websecure:
           address: ":443"
-          http:
-            tls: {}
         traefik:
           address: ":8080"
 
@@ -347,6 +345,24 @@ resource "kubernetes_manifest" "traefik_certs" {
   }
 }
 
+# Define o TLS Store padrão para forçar o uso do certificado da Let's Encrypt
+resource "kubernetes_manifest" "traefik_tls_store" {
+  depends_on = [kubernetes_manifest.traefik_certs, null_resource.traefik_crds]
+  manifest = {
+    apiVersion = "traefik.io/v1alpha1"
+    kind       = "TLSStore"
+    metadata = {
+      name      = "default"
+      namespace = kubernetes_namespace_v1.traefik.metadata[0].name
+    }
+    spec = {
+      defaultCertificate = {
+        secretName = "traefik-certs"
+      }
+    }
+  }
+}
+
 # Secret para autenticação do dashboard
 resource "kubernetes_secret_v1" "dashboard_auth" {
   count = var.enable_dashboard ? 1 : 0
@@ -387,7 +403,7 @@ resource "kubernetes_manifest" "dashboard_auth" {
   }
 }
 
-# Traefik IngressRoute para o Dashboard (NOMES LIMPIDAMENTE NOVOS)
+# Traefik IngressRoute para o Dashboard
 resource "kubernetes_manifest" "traefik_dashboard_native" {
   count = var.enable_dashboard ? 1 : 0
 
@@ -403,7 +419,7 @@ resource "kubernetes_manifest" "traefik_dashboard_native" {
     apiVersion = "traefik.io/v1alpha1"
     kind       = "IngressRoute"
     metadata = {
-      name      = "traefik-dashboard-native" # Renomeado para forçar refresh
+      name      = "traefik-dashboard-native"
       namespace = kubernetes_namespace_v1.traefik.metadata[0].name
     }
     spec = {
