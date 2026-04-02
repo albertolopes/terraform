@@ -84,7 +84,7 @@ resource "kubernetes_cluster_role_binding_v1" "traefik" {
   ]
 }
 
-# ConfigMap do Traefik
+# ConfigMap do Traefik (PING HABILITADO)
 resource "kubernetes_config_map_v1" "traefik" {
   metadata {
     name      = "traefik-config"
@@ -100,9 +100,9 @@ resource "kubernetes_config_map_v1" "traefik" {
         dashboard: ${var.enable_dashboard}
         debug: false
 
-      # Habilita o endpoint de Ping para Health Checks (CORRIGIDO)
+      # Habilita o endpoint de Ping (CORREÇÃO V3)
       ping:
-        entryPoint: websecure
+        entryPoint: traefik
 
       entryPoints:
         web:
@@ -215,6 +215,7 @@ resource "kubernetes_deployment_v1" "traefik" {
             "--configfile=/config/traefik.yml",
             "--providers.kubernetesingress",
             "--providers.kubernetescrd",
+            "--ping", # Habilita explicitamente o ping via flag também
           ]
 
           port {
@@ -245,8 +246,7 @@ resource "kubernetes_deployment_v1" "traefik" {
           liveness_probe {
             http_get {
               path = "/ping"
-              port = 443
-              scheme = "HTTPS"
+              port = 8080
             }
             initial_delay_seconds = 10
             period_seconds        = 10
@@ -255,8 +255,7 @@ resource "kubernetes_deployment_v1" "traefik" {
           readiness_probe {
             http_get {
               path = "/ping"
-              port = 443
-              scheme = "HTTPS"
+              port = 8080
             }
             initial_delay_seconds = 10
             period_seconds        = 10
