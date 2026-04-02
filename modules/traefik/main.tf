@@ -323,7 +323,7 @@ resource "kubernetes_service_v1" "traefik" {
   depends_on = [kubernetes_deployment_v1.traefik]
 }
 
-# Certificado para o domínio principal (via Cert-Manager)
+# Certificado SSL no namespace 'traefik' (avocadotech.site)
 resource "kubernetes_manifest" "traefik_certs" {
   manifest = {
     apiVersion = "cert-manager.io/v1"
@@ -338,25 +338,9 @@ resource "kubernetes_manifest" "traefik_certs" {
         name = "letsencrypt-cloudflare"
         kind = "ClusterIssuer"
       }
-      dnsNames = ["traefik.${var.domain_name}"]
-    }
-  }
-}
-
-# TLSStore default (Garante que o Traefik tenha certificados base carregados)
-resource "kubernetes_manifest" "traefik_tls_store" {
-  depends_on = [kubernetes_manifest.traefik_certs, null_resource.traefik_crds]
-  manifest = {
-    apiVersion = "traefik.io/v1alpha1"
-    kind       = "TLSStore"
-    metadata = {
-      name      = "default"
-      namespace = kubernetes_namespace_v1.traefik.metadata[0].name
-    }
-    spec = {
-      defaultCertificate = {
-        secretName = "traefik-certs"
-      }
+      dnsNames = [
+        "traefik.${var.domain_name}"
+      ]
     }
   }
 }
@@ -401,7 +385,7 @@ resource "kubernetes_manifest" "dashboard_auth" {
   }
 }
 
-# Traefik IngressRoute para o Dashboard (SUPORTANDO AMBOS OS DOMÍNIOS)
+# Traefik IngressRoute para o Dashboard (CORREÇÃO TLS FINAL)
 resource "kubernetes_manifest" "traefik_dashboard_native" {
   count = var.enable_dashboard ? 1 : 0
 
@@ -437,10 +421,9 @@ resource "kubernetes_manifest" "traefik_dashboard_native" {
         }
       ]
       tls = {
-        # O segredo tailscale-certs deve ser criado manualmente via kubectl primeiro
-        # para que o SSL do domínio tailscale fique verde.
-        # Se não existir, o Traefik usará o default (traefik-certs).
-        options = {}
+        # Removido options para evitar erro de validação.
+        # Ao fornecer uma lista de segredos, o Traefik escolherá o que bater com o host (SNI).
+        secretName = "traefik-certs"
       }
     }
   }
