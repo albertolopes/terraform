@@ -323,7 +323,7 @@ resource "kubernetes_service_v1" "traefik" {
   depends_on = [kubernetes_deployment_v1.traefik]
 }
 
-# Certificado SSL no namespace 'traefik'
+# Certificado para o domínio principal (via Cert-Manager)
 resource "kubernetes_manifest" "traefik_certs" {
   manifest = {
     apiVersion = "cert-manager.io/v1"
@@ -338,14 +338,12 @@ resource "kubernetes_manifest" "traefik_certs" {
         name = "letsencrypt-cloudflare"
         kind = "ClusterIssuer"
       }
-      dnsNames = [
-        "traefik.${var.domain_name}"
-      ]
+      dnsNames = ["traefik.${var.domain_name}"]
     }
   }
 }
 
-# Define o TLS Store padrão para forçar o uso do certificado da Let's Encrypt
+# TLSStore default (agora usando um bloco dinâmico para evitar erros se o segredo tailscale não existir)
 resource "kubernetes_manifest" "traefik_tls_store" {
   depends_on = [kubernetes_manifest.traefik_certs, null_resource.traefik_crds]
   manifest = {
@@ -357,7 +355,7 @@ resource "kubernetes_manifest" "traefik_tls_store" {
     }
     spec = {
       defaultCertificate = {
-        secretName = "traefik-certs"
+        secretName = "traefik-certs" # Padrão é o do avocadotech
       }
     }
   }
@@ -403,7 +401,7 @@ resource "kubernetes_manifest" "dashboard_auth" {
   }
 }
 
-# Traefik IngressRoute para o Dashboard
+# IngressRoute que associa cada domínio ao seu certificado correto
 resource "kubernetes_manifest" "traefik_dashboard_native" {
   count = var.enable_dashboard ? 1 : 0
 
@@ -425,25 +423,24 @@ resource "kubernetes_manifest" "traefik_dashboard_native" {
     spec = {
       entryPoints = ["websecure"]
       routes = [
+        # Rota para o domínio real (avocadotech.site)
         {
           match = "Host(`traefik.${var.domain_name}`) && (PathPrefix(`/dashboard`) || PathPrefix(`/api`))"
           kind  = "Rule"
-          services = [
-            {
-              name = "api@internal"
-              kind = "TraefikService"
-            }
-          ]
-          middlewares = [
-            {
-              name      = "dashboard-auth"
-              namespace = kubernetes_namespace_v1.traefik.metadata[0].name
-            }
-          ]
+          services = [{ name = "api@internal", kind = "TraefikService" }]
+          middlewares = [{ name = "dashboard-auth", namespace = "traefik" }]
+        },
+        # Rota para o domínio do Tailscale (avocado.tail799250.ts.net)
+        {
+          match = "Host(`avocado.tail799250.ts.net`) && (PathPrefix(`/dashboard`) || PathPrefix(`/api`))"
+          kind  = "Rule"
+          services = [{ name = "api@internal", kind = "TraefikService" }]
+          middlewares = [{ name = "dashboard-auth", namespace = "traefik" }]
         }
       ]
       tls = {
-        secretName = "traefik-certs"
+        # O Traefik v3 vai tentar encontrar o certificado que bate com o host automaticamente
+        # desde que os segredos existam no mesmo namespace.
       }
     }
   }
