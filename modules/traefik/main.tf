@@ -323,7 +323,7 @@ resource "kubernetes_service_v1" "traefik" {
   depends_on = [kubernetes_deployment_v1.traefik]
 }
 
-# Certificado para o domínio principal (via Cert-Manager)
+# Certificado SSL no namespace 'traefik' (Avocadotech)
 resource "kubernetes_manifest" "traefik_certs" {
   manifest = {
     apiVersion = "cert-manager.io/v1"
@@ -343,7 +343,7 @@ resource "kubernetes_manifest" "traefik_certs" {
   }
 }
 
-# TLSStore default (agora usando um bloco dinâmico para evitar erros se o segredo tailscale não existir)
+# TLSStore default (Garante que o Traefik tenha certificados base carregados)
 resource "kubernetes_manifest" "traefik_tls_store" {
   depends_on = [kubernetes_manifest.traefik_certs, null_resource.traefik_crds]
   manifest = {
@@ -355,7 +355,7 @@ resource "kubernetes_manifest" "traefik_tls_store" {
     }
     spec = {
       defaultCertificate = {
-        secretName = "traefik-certs" # Padrão é o do avocadotech
+        secretName = "traefik-certs"
       }
     }
   }
@@ -401,7 +401,7 @@ resource "kubernetes_manifest" "dashboard_auth" {
   }
 }
 
-# IngressRoute que associa cada domínio ao seu certificado correto
+# Rota Única para o Dashboard (SUPORTANDO AMBOS OS DOMÍNIOS)
 resource "kubernetes_manifest" "traefik_dashboard_native" {
   count = var.enable_dashboard ? 1 : 0
 
@@ -423,24 +423,19 @@ resource "kubernetes_manifest" "traefik_dashboard_native" {
     spec = {
       entryPoints = ["websecure"]
       routes = [
-        # Rota para o domínio real (avocadotech.site)
         {
-          match = "Host(`traefik.${var.domain_name}`) && (PathPrefix(`/dashboard`) || PathPrefix(`/api`))"
-          kind  = "Rule"
-          services = [{ name = "api@internal", kind = "TraefikService" }]
-          middlewares = [{ name = "dashboard-auth", namespace = "traefik" }]
-        },
-        # Rota para o domínio do Tailscale (avocado.tail799250.ts.net)
-        {
-          match = "Host(`avocado.tail799250.ts.net`) && (PathPrefix(`/dashboard`) || PathPrefix(`/api`))"
+          # Atende tanto o domínio real quanto o do Tailscale
+          match = "Host(`traefik.${var.domain_name}`) || Host(`avocado.tail799250.ts.net`) && (PathPrefix(`/dashboard`) || PathPrefix(`/api`))"
           kind  = "Rule"
           services = [{ name = "api@internal", kind = "TraefikService" }]
           middlewares = [{ name = "dashboard-auth", namespace = "traefik" }]
         }
       ]
       tls = {
-        # O Traefik v3 vai tentar encontrar o certificado que bate com o host automaticamente
-        # desde que os segredos existam no mesmo namespace.
+        # Como o Traefik usa SNI, ele vai procurar o certificado que bate com o host.
+        # Ao deixar o tls vazio (mas presente), ele consulta o TLSStore ou outros segredos no namespace.
+        # No entanto, o Terraform reclama se for null, então vamos ser explícitos com uma lista vazia de options.
+        options = {}
       }
     }
   }
