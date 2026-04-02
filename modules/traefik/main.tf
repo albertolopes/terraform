@@ -385,7 +385,7 @@ resource "kubernetes_manifest" "dashboard_auth" {
   }
 }
 
-# IngressRoute Único com múltiplos certificados (Traefik v3 Style)
+# IngressRoute Único com múltiplos certificados (SINTAXE CORRETA)
 resource "kubernetes_manifest" "traefik_dashboard_unified" {
   count = var.enable_dashboard ? 1 : 0
 
@@ -408,16 +408,15 @@ resource "kubernetes_manifest" "traefik_dashboard_unified" {
       entryPoints = ["websecure"]
       routes = [
         {
-          match = "Host(`traefik.${var.domain_name}`, `avocado.tail799250.ts.net`) && (PathPrefix(`/dashboard`) || PathPrefix(`/api`))"
+          # Sintaxe corrigida para múltiplos hosts com OR (||)
+          match = "(Host(`traefik.${var.domain_name}`) || Host(`avocado.tail799250.ts.net`)) && (PathPrefix(`/dashboard`) || PathPrefix(`/api`))"
           kind  = "Rule"
           services = [{ name = "api@internal", kind = "TraefikService" }]
           middlewares = [{ name = "dashboard-auth", namespace = "traefik" }]
         }
       ]
       tls = {
-        # O Traefik v3 buscará automaticamente os certificados que batem com os Hosts acima
-        # desde que os segredos existam no namespace 'traefik'.
-        secretName = "traefik-certs"
+        # Deixando o secretName fora para que o Traefik escolha dinamicamente no namespace
       }
     }
   }
