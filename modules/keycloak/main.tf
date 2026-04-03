@@ -20,16 +20,6 @@ variable "db_password" {
   sensitive   = true
 }
 
-resource "kubernetes_secret_v1" "keycloak_admin" {
-  metadata {
-    name = "keycloak-admin"
-  }
-  data = {
-    "auth.adminUser"     = var.admin_user
-    "auth.adminPassword" = var.admin_password
-  }
-}
-
 resource "kubernetes_deployment_v1" "keycloak" {
   metadata {
     name = "keycloak"
@@ -51,8 +41,8 @@ resource "kubernetes_deployment_v1" "keycloak" {
         container {
           name  = "keycloak"
           image = "quay.io/keycloak/keycloak:latest"
-          # Comando simples para o primeiro boot
-          args  = ["start", "--http-relative-path=/keycloak"]
+          # Comando de produção padrão
+          args  = ["start"]
 
           env {
             name  = "KEYCLOAK_ADMIN"
@@ -62,6 +52,7 @@ resource "kubernetes_deployment_v1" "keycloak" {
             name  = "KEYCLOAK_ADMIN_PASSWORD"
             value = var.admin_password
           }
+          # --- Configurações de Produção para Proxy Reverso ---
           env {
             name  = "KC_HOSTNAME"
             value = var.domain_name
@@ -71,13 +62,14 @@ resource "kubernetes_deployment_v1" "keycloak" {
             value = "/keycloak"
           }
           env {
-            name  = "KC_HOSTNAME_STRICT"
-            value = "false"
+            name  = "KC_PROXY"
+            value = "edge" # Informa que está atrás de um proxy
           }
           env {
-            name  = "KC_PROXY"
-            value = "edge"
+            name  = "KC_HTTP_ENABLED"
+            value = "true" # Permite que o Keycloak rode em HTTP, pois o proxy faz o TLS
           }
+          # --- Fim das Configurações de Proxy ---
           env {
             name  = "KC_DB"
             value = "postgres"
@@ -106,11 +98,11 @@ resource "kubernetes_deployment_v1" "keycloak" {
 
           readiness_probe {
             http_get {
-              path = "/keycloak/health/live"
+              path = "/keycloak/health/ready"
               port = 8080
             }
-            initial_delay_seconds = 60 # Aumentado para o boot inicial
-            period_seconds        = 10
+            initial_delay_seconds = 90 # Aumentado para o build de produção
+            period_seconds        = 15
           }
 
           resources {
