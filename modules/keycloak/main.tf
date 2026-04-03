@@ -51,8 +51,8 @@ resource "kubernetes_deployment_v1" "keycloak" {
         container {
           name  = "keycloak"
           image = "quay.io/keycloak/keycloak:latest"
-          # Comando start explícito com o path relativo
-          args  = ["start", "--http-relative-path=/keycloak"]
+          # Removido argumento complexo para evitar erro de boot
+          args  = ["start", "--optimized"]
 
           env {
             name  = "KEYCLOAK_ADMIN"
@@ -66,29 +66,18 @@ resource "kubernetes_deployment_v1" "keycloak" {
             name  = "KC_HOSTNAME"
             value = var.domain_name
           }
+          # Variável padrão para path relativo
+          env {
+            name  = "KC_HTTP_RELATIVE_PATH"
+            value = "/keycloak"
+          }
           env {
             name  = "KC_HOSTNAME_STRICT"
             value = "false"
           }
           env {
-            name  = "KC_HOSTNAME_STRICT_HTTPS"
-            value = "false"
-          }
-          env {
             name  = "KC_PROXY"
             value = "edge"
-          }
-          env {
-            name  = "KC_PROXY_ADDRESS_FORWARDING"
-            value = "true"
-          }
-          env {
-            name  = "KC_HTTP_ENABLED"
-            value = "true"
-          }
-          env {
-            name  = "KC_PROXY_HEADERS"
-            value = "xforwarded"
           }
           env {
             name  = "KC_DB"
@@ -106,23 +95,23 @@ resource "kubernetes_deployment_v1" "keycloak" {
             name  = "KC_DB_PASSWORD"
             value = var.db_password
           }
+          env {
+            name  = "KC_HEALTH_ENABLED"
+            value = "true"
+          }
 
           port {
             name           = "http"
             container_port = 8080
           }
-          port {
-            name           = "management"
-            container_port = 9000
-          }
 
+          # Readiness probe voltando para a porta 8080 no path configurado
           readiness_probe {
             http_get {
-              # Readiness ajustado para o novo path
-              path = "/keycloak/health/ready"
-              port = 9000
+              path = "/keycloak/health/live"
+              port = 8080
             }
-            initial_delay_seconds = 30
+            initial_delay_seconds = 40
             period_seconds        = 10
           }
 
