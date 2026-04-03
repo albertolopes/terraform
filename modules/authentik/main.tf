@@ -20,9 +20,17 @@ resource "kubernetes_deployment_v1" "postgresql" {
   }
   spec {
     replicas = 1
-    selector { match_labels = { app = "authentik-postgresql" } }
+    selector {
+      match_labels = {
+        app = "authentik-postgresql"
+      }
+    }
     template {
-      metadata { labels = { app = "authentik-postgresql" } }
+      metadata {
+        labels = {
+          app = "authentik-postgresql"
+        }
+      }
       spec {
         container {
           name  = "postgres"
@@ -31,9 +39,17 @@ resource "kubernetes_deployment_v1" "postgresql" {
             name  = "POSTGRES_PASSWORD"
             value = var.pg_pass
           }
-          env { name = "POSTGRES_USER", value = "authentik" }
-          env { name = "POSTGRES_DB", value = "authentik" }
-          port { container_port = 5432 }
+          env {
+            name  = "POSTGRES_USER"
+            value = "authentik"
+          }
+          env {
+            name  = "POSTGRES_DB"
+            value = "authentik"
+          }
+          port {
+            container_port = 5432
+          }
         }
       }
     }
@@ -46,8 +62,12 @@ resource "kubernetes_service_v1" "postgresql" {
     namespace = kubernetes_namespace_v1.authentik.metadata[0].name
   }
   spec {
-    selector = { app = "authentik-postgresql" }
-    port { port = 5432 }
+    selector = {
+      app = "authentik-postgresql"
+    }
+    port {
+      port = 5432
+    }
   }
 }
 
@@ -59,14 +79,24 @@ resource "kubernetes_deployment_v1" "redis" {
   }
   spec {
     replicas = 1
-    selector { match_labels = { app = "authentik-redis" } }
+    selector {
+      match_labels = {
+        app = "authentik-redis"
+      }
+    }
     template {
-      metadata { labels = { app = "authentik-redis" } }
+      metadata {
+        labels = {
+          app = "authentik-redis"
+        }
+      }
       spec {
         container {
           name  = "redis"
           image = "docker.io/library/redis:alpine"
-          port { container_port = 6379 }
+          port {
+            container_port = 6379
+          }
         }
       }
     }
@@ -79,8 +109,12 @@ resource "kubernetes_service_v1" "redis" {
     namespace = kubernetes_namespace_v1.authentik.metadata[0].name
   }
   spec {
-    selector = { app = "authentik-redis" }
-    port { port = 6379 }
+    selector = {
+      app = "authentik-redis"
+    }
+    port {
+      port = 6379
+    }
   }
 }
 
@@ -92,21 +126,48 @@ resource "kubernetes_deployment_v1" "authentik_server" {
   }
   spec {
     replicas = 1
-    selector { match_labels = { app = "authentik-server" } }
+    selector {
+      match_labels = {
+        app = "authentik-server"
+      }
+    }
     template {
-      metadata { labels = { app = "authentik-server" } }
+      metadata {
+        labels = {
+          app = "authentik-server"
+        }
+      }
       spec {
         container {
-          name  = "server"
-          image = "ghcr.io/goauthentik/server:latest"
+          name    = "server"
+          image   = "ghcr.io/goauthentik/server:latest"
           command = ["server"]
-          env { name = "AUTHENTIK_REDIS__HOST", value = "authentik-redis" }
-          env { name = "AUTHENTIK_POSTGRESQL__HOST", value = "authentik-postgresql" }
-          env { name = "AUTHENTIK_POSTGRESQL__USER", value = "authentik" }
-          env { name = "AUTHENTIK_POSTGRESQL__NAME", value = "authentik" }
-          env { name = "AUTHENTIK_POSTGRESQL__PASSWORD", value = var.pg_pass }
-          port { container_port = 9000 }
-          port { container_port = 9443 }
+          env {
+            name  = "AUTHENTIK_REDIS__HOST"
+            value = "authentik-redis"
+          }
+          env {
+            name  = "AUTHENTIK_POSTGRESQL__HOST"
+            value = "authentik-postgresql"
+          }
+          env {
+            name  = "AUTHENTIK_POSTGRESQL__USER"
+            value = "authentik"
+          }
+          env {
+            name  = "AUTHENTIK_POSTGRESQL__NAME"
+            value = "authentik"
+          }
+          env {
+            name  = "AUTHENTIK_POSTGRESQL__PASSWORD"
+            value = var.pg_pass
+          }
+          port {
+            container_port = 9000
+          }
+          port {
+            container_port = 9443
+          }
         }
       }
     }
@@ -120,19 +181,42 @@ resource "kubernetes_deployment_v1" "authentik_worker" {
   }
   spec {
     replicas = 1
-    selector { match_labels = { app = "authentik-worker" } }
+    selector {
+      match_labels = {
+        app = "authentik-worker"
+      }
+    }
     template {
-      metadata { labels = { app = "authentik-worker" } }
+      metadata {
+        labels = {
+          app = "authentik-worker"
+        }
+      }
       spec {
         container {
-          name  = "worker"
-          image = "ghcr.io/goauthentik/server:latest"
+          name    = "worker"
+          image   = "ghcr.io/goauthentik/server:latest"
           command = ["worker"]
-          env { name = "AUTHENTIK_REDIS__HOST", value = "authentik-redis" }
-          env { name = "AUTHENTIK_POSTGRESQL__HOST", value = "authentik-postgresql" }
-          env { name = "AUTHENTIK_POSTGRESQL__USER", value = "authentik" }
-          env { name = "AUTHENTIK_POSTGRESQL__NAME", value = "authentik" }
-          env { name = "AUTHENTIK_POSTGRESQL__PASSWORD", value = var.pg_pass }
+          env {
+            name  = "AUTHENTIK_REDIS__HOST"
+            value = "authentik-redis"
+          }
+          env {
+            name  = "AUTHENTIK_POSTGRESQL__HOST"
+            value = "authentik-postgresql"
+          }
+          env {
+            name  = "AUTHENTIK_POSTGRESQL__USER"
+            value = "authentik"
+          }
+          env {
+            name  = "AUTHENTIK_POSTGRESQL__NAME"
+            value = "authentik"
+          }
+          env {
+            name  = "AUTHENTIK_POSTGRESQL__PASSWORD"
+            value = var.pg_pass
+          }
         }
       }
     }
@@ -145,8 +229,16 @@ resource "kubernetes_service_v1" "authentik_server" {
     namespace = kubernetes_namespace_v1.authentik.metadata[0].name
   }
   spec {
-    selector = { app = "authentik-server" }
-    port { name = "http", port = 9000 }
-    port { name = "https", port = 9443 }
+    selector = {
+      app = "authentik-server"
+    }
+    port {
+      name = "http"
+      port = 9000
+    }
+    port {
+      name = "https"
+      port = 9443
+    }
   }
 }
