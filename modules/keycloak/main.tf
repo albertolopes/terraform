@@ -51,8 +51,8 @@ resource "kubernetes_deployment_v1" "keycloak" {
         container {
           name  = "keycloak"
           image = "quay.io/keycloak/keycloak:latest"
-          # Removido argumento complexo para evitar erro de boot
-          args  = ["start", "--optimized"]
+          # Comando simples para o primeiro boot
+          args  = ["start", "--http-relative-path=/keycloak"]
 
           env {
             name  = "KEYCLOAK_ADMIN"
@@ -66,7 +66,6 @@ resource "kubernetes_deployment_v1" "keycloak" {
             name  = "KC_HOSTNAME"
             value = var.domain_name
           }
-          # Variável padrão para path relativo
           env {
             name  = "KC_HTTP_RELATIVE_PATH"
             value = "/keycloak"
@@ -105,13 +104,12 @@ resource "kubernetes_deployment_v1" "keycloak" {
             container_port = 8080
           }
 
-          # Readiness probe voltando para a porta 8080 no path configurado
           readiness_probe {
             http_get {
               path = "/keycloak/health/live"
               port = 8080
             }
-            initial_delay_seconds = 40
+            initial_delay_seconds = 60 # Aumentado para o boot inicial
             period_seconds        = 10
           }
 
