@@ -1,7 +1,7 @@
 resource "kubernetes_ingress_v1" "external_dns_targets" {
   metadata {
     name      = "external-dns-targets"
-    namespace = "traefik" # Coloquei no mesmo namespace do Traefik
+    namespace = "traefik"
     annotations = {
       "kubernetes.io/ingress.class" = "traefik"
       # Força a criação de CNAMEs apontando para o Funnel
@@ -13,12 +13,12 @@ resource "kubernetes_ingress_v1" "external_dns_targets" {
 
   spec {
     ingress_class_name = "traefik"
-    # Lista de todos os domínios que você quer criar no Cloudflare
+    # Agora centralizado no domínio principal para suportar o Tailscale Funnel
     rule {
-      host = "keycloak.${var.domain_name}"
+      host = var.domain_name
       http {
         path {
-          path = "/"
+          path = "/keycloak"
           path_type = "Prefix"
           backend {
             service {
@@ -29,13 +29,8 @@ resource "kubernetes_ingress_v1" "external_dns_targets" {
             }
           }
         }
-      }
-    }
-    rule {
-      host = "minio.${var.domain_name}"
-      http {
         path {
-          path = "/"
+          path = "/minio"
           path_type = "Prefix"
           backend {
             service {
@@ -46,13 +41,8 @@ resource "kubernetes_ingress_v1" "external_dns_targets" {
             }
           }
         }
-      }
-    }
-    rule {
-      host = "minio-console.${var.domain_name}"
-      http {
         path {
-          path = "/"
+          path = "/console"
           path_type = "Prefix"
           backend {
             service {
@@ -63,13 +53,8 @@ resource "kubernetes_ingress_v1" "external_dns_targets" {
             }
           }
         }
-      }
-    }
-    rule {
-      host = "api.${var.domain_name}"
-      http {
         path {
-          path = "/"
+          path = "/traefik"
           path_type = "Prefix"
           backend {
             service {
