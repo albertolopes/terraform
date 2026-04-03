@@ -334,7 +334,7 @@ resource "kubernetes_secret_v1" "dashboard_auth" {
     # Usuário: admin
     # Senha: admin123
     # O replace("$", "$$") é necessário porque o Terraform usa $ para interpolação
-    users = "admin:${replace(bcrypt("admin123"), "$", "$$")}"
+    users = "admin:admin123"
   }
   type = "Opaque"
 
