@@ -323,7 +323,7 @@ resource "kubernetes_service_v1" "traefik" {
   depends_on = [kubernetes_deployment_v1.traefik]
 }
 
-# Secret para autenticação do dashboard (SENHA: admin123)
+# Secret para autenticação do dashboard (SENHA GERADA VIA TERRAFORM)
 resource "kubernetes_secret_v1" "dashboard_auth" {
   metadata {
     name      = "traefik-dashboard-auth"
@@ -333,8 +333,8 @@ resource "kubernetes_secret_v1" "dashboard_auth" {
   data = {
     # Usuário: admin
     # Senha: admin123
-    # Hash gerado com escape para o caractere $ para o Terraform não se perder
-    users = "admin:$2y$05$hvIK7Z6OnZIs.Xv6Z.shAeInSR.v6Z.shAeInSR.v6Z.shAeInSR."
+    # O replace("$", "$$") é necessário porque o Terraform usa $ para interpolação
+    users = "admin:${replace(bcrypt("admin123"), "$", "$$")}"
   }
   type = "Opaque"
 
