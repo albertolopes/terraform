@@ -63,7 +63,12 @@ resource "kubernetes_deployment_v1" "keycloak" {
           }
           env {
             name  = "KC_HOSTNAME"
-            value = "keycloak.${var.domain_name}"
+            value = var.domain_name # Agora será avocado.tail799250.ts.net
+          }
+          # IMPORTANTE: Permite que o Keycloak saiba que está em um sub-caminho
+          env {
+            name  = "KC_HTTP_RELATIVE_PATH"
+            value = "/keycloak"
           }
           env {
             name  = "KC_HOSTNAME_STRICT"
@@ -117,7 +122,8 @@ resource "kubernetes_deployment_v1" "keycloak" {
 
           readiness_probe {
             http_get {
-              path = "/realms/master"
+              # Caminho ajustado para o novo path relativo
+              path = "/keycloak/realms/master"
               port = 8080
             }
             initial_delay_seconds = 30

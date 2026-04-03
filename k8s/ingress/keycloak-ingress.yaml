@@ -1,13 +1,17 @@
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: keycloak-host-ingress
+  name: keycloak-ingress
   namespace: default
   annotations:
     kubernetes.io/ingress.class: traefik
     traefik.ingress.kubernetes.io/router.entrypoints: websecure
 spec:
   ingressClassName: traefik
+  tls:
+    - hosts:
+        - avocado.tail799250.ts.net
+      secretName: tailscale-certs
   rules:
     - host: avocado.tail799250.ts.net
       http:
