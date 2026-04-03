@@ -51,7 +51,8 @@ resource "kubernetes_deployment_v1" "keycloak" {
         container {
           name  = "keycloak"
           image = "quay.io/keycloak/keycloak:latest"
-          args  = ["start"]
+          # Comando start explícito com o path relativo
+          args  = ["start", "--http-relative-path=/keycloak"]
 
           env {
             name  = "KEYCLOAK_ADMIN"
@@ -63,12 +64,7 @@ resource "kubernetes_deployment_v1" "keycloak" {
           }
           env {
             name  = "KC_HOSTNAME"
-            value = var.domain_name # Agora será avocado.tail799250.ts.net
-          }
-          # IMPORTANTE: Permite que o Keycloak saiba que está em um sub-caminho
-          env {
-            name  = "KC_HTTP_RELATIVE_PATH"
-            value = "/keycloak"
+            value = var.domain_name
           }
           env {
             name  = "KC_HOSTNAME_STRICT"
@@ -122,13 +118,12 @@ resource "kubernetes_deployment_v1" "keycloak" {
 
           readiness_probe {
             http_get {
-              # Caminho ajustado para o novo path relativo
-              path = "/keycloak/realms/master"
-              port = 8080
+              # Readiness ajustado para o novo path
+              path = "/keycloak/health/ready"
+              port = 9000
             }
             initial_delay_seconds = 30
             period_seconds        = 10
-            failure_threshold     = 3
           }
 
           resources {
