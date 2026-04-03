@@ -323,7 +323,7 @@ resource "kubernetes_service_v1" "traefik" {
   depends_on = [kubernetes_deployment_v1.traefik]
 }
 
-# Secret para autenticação do dashboard (SENHA GERADA VIA TERRAFORM)
+# Secret para autenticação do dashboard (SENHA: admin123 em hash BCrypt)
 resource "kubernetes_secret_v1" "dashboard_auth" {
   metadata {
     name      = "traefik-dashboard-auth"
@@ -331,10 +331,7 @@ resource "kubernetes_secret_v1" "dashboard_auth" {
   }
 
   data = {
-    # Usuário: admin
-    # Senha: admin123
-    # O replace("$", "$$") é necessário porque o Terraform usa $ para interpolação
-    users = "admin:admin123"
+    users = "admin:${replace(bcrypt("admin123"), "$", "$$")}"
   }
   type = "Opaque"
 
@@ -362,13 +359,32 @@ resource "kubernetes_manifest" "dashboard_auth" {
   }
 }
 
-# Traefik IngressRoute para o Dashboard
+# Middleware StripPrefix (Para Minio, Console e Authentik)
+resource "kubernetes_manifest" "strip_prefixes" {
+  depends_on = [null_resource.traefik_crds]
+  manifest = {
+    apiVersion = "traefik.io/v1alpha1"
+    kind       = "Middleware"
+    metadata = {
+      name      = "strip-prefixes"
+      namespace = kubernetes_namespace_v1.traefik.metadata[0].name
+    }
+    spec = {
+      stripPrefix = {
+        prefixes = ["/minio", "/console", "/authentik"]
+      }
+    }
+  }
+}
+
+# Traefik IngressRoute para Dashboard, Minio e Authentik
 resource "kubernetes_manifest" "traefik_dashboard_unified" {
   count = var.enable_dashboard ? 1 : 0
 
   depends_on = [
     kubernetes_service_v1.traefik,
     kubernetes_manifest.dashboard_auth,
+    kubernetes_manifest.strip_prefixes,
     kubernetes_ingress_class_v1.traefik,
     null_resource.traefik_crds
   ]
@@ -377,17 +393,39 @@ resource "kubernetes_manifest" "traefik_dashboard_unified" {
     apiVersion = "traefik.io/v1alpha1"
     kind       = "IngressRoute"
     metadata = {
-      name      = "traefik-dashboard-unified"
+      name      = "main-ingressroute"
       namespace = kubernetes_namespace_v1.traefik.metadata[0].name
     }
     spec = {
       entryPoints = ["websecure"]
       routes = [
+        # Dashboard
         {
-          match = "(Host(`traefik.${var.domain_name}`) || Host(`avocado.tail799250.ts.net`)) && (PathPrefix(`/dashboard`) || PathPrefix(`/api`))"
+          match = "Host(`avocado.tail799250.ts.net`) && (PathPrefix(`/dashboard`) || PathPrefix(`/api`))"
           kind  = "Rule"
           services = [{ name = "api@internal", kind = "TraefikService" }]
           middlewares = [{ name = "dashboard-auth", namespace = "traefik" }]
+        },
+        # Authentik
+        {
+          match = "Host(`avocado.tail799250.ts.net`) && PathPrefix(`/authentik`)"
+          kind  = "Rule"
+          services = [{ name = "authentik-server", namespace = "authentik", port = 9000 }]
+          middlewares = [{ name = "strip-prefixes", namespace = "traefik" }]
+        },
+        # Minio S3 API
+        {
+          match = "Host(`avocado.tail799250.ts.net`) && PathPrefix(`/minio`)"
+          kind  = "Rule"
+          services = [{ name = "minio", namespace = "default", port = 9000 }]
+          middlewares = [{ name = "strip-prefixes", namespace = "traefik" }]
+        },
+        # Minio Console
+        {
+          match = "Host(`avocado.tail799250.ts.net`) && PathPrefix(`/console`)"
+          kind  = "Rule"
+          services = [{ name = "minio", namespace = "default", port = 9001 }]
+          middlewares = [{ name = "strip-prefixes", namespace = "traefik" }]
         }
       ]
       tls = {

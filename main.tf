@@ -1,10 +1,4 @@
 # Gerenciamento de Senhas e Segredos Aleatórios
-resource "random_password" "postgres" {
-  length           = 16
-  special          = true
-  override_special = "!#%&"
-}
-
 resource "random_password" "minio_secret_key" {
   length           = 16
   special          = true
@@ -16,18 +10,16 @@ resource "random_password" "authentik_pg_pass" {
   special = false
 }
 
+resource "random_password" "authentik_secret_key" {
+  length  = 64
+  special = true
+}
+
 # --- Infraestrutura Base ---
 module "k3d_cluster" {
   source               = "./modules/k3d-cluster"
   cluster_config_path  = "${path.module}/cluster.yaml"
   scripts_path         = "${path.module}/scripts"
-}
-
-# --- Banco de Dados (Legado, pode ser removido se não for mais usado) ---
-module "postgres" {
-  source      = "./modules/postgres"
-  db_password = random_password.postgres.result
-  depends_on  = [module.k3d_cluster]
 }
 
 # --- Object Storage ---
@@ -39,17 +31,19 @@ module "minio" {
   depends_on       = [module.k3d_cluster]
 }
 
-# --- Gerenciamento de Identidade (NOVO) ---
+# --- Gerenciamento de Identidade (Authentik) ---
 module "authentik" {
   source     = "./modules/authentik"
   pg_pass    = random_password.authentik_pg_pass.result
+  secret_key = random_password.authentik_secret_key.result
   depends_on = [module.k3d_cluster]
 }
 
-# --- Servidor Web ---
+# --- Servidor Web (Traefik) ---
 module "traefik" {
-  source = "./modules/traefik"
-  domain_name = var.domain_name
-  admin_email = var.admin_email
+  source           = "./modules/traefik"
+  domain_name      = var.domain_name
+  admin_email      = var.admin_email
   enable_dashboard = true
+  depends_on       = [module.k3d_cluster]
 }
