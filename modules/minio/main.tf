@@ -14,12 +14,6 @@ variable "domain_name" {
   type        = string
 }
 
-resource "kubernetes_namespace_v1" "minio" {
-  metadata {
-    name = "default" # Mudando de volta para default para não quebrar a dependência
-  }
-}
-
 resource "kubernetes_secret_v1" "minio_credentials" {
   metadata {
     name      = "minio-credentials"

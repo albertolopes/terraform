@@ -403,28 +403,52 @@ resource "kubernetes_manifest" "traefik_dashboard_unified" {
         {
           match = "Host(`avocado.tail799250.ts.net`) && (PathPrefix(`/dashboard`) || PathPrefix(`/api`))"
           kind  = "Rule"
-          services = [{ name = "api@internal", kind = "TraefikService" }]
+          services = [
+            {
+              name      = "traefik"
+              namespace = kubernetes_namespace_v1.traefik.metadata[0].name
+              port      = 8080
+            }
+          ]
           middlewares = [{ name = "dashboard-auth", namespace = "traefik" }]
         },
         # Authentik
         {
           match = "Host(`avocado.tail799250.ts.net`) && PathPrefix(`/authentik`)"
           kind  = "Rule"
-          services = [{ name = "authentik-server", namespace = "authentik", port = 9000 }]
+          services = [
+            {
+              name      = "authentik-server"
+              namespace = "authentik"
+              port      = 9000
+            }
+          ]
           middlewares = [{ name = "strip-prefixes", namespace = "traefik" }]
         },
         # Minio S3 API
         {
           match = "Host(`avocado.tail799250.ts.net`) && PathPrefix(`/minio`)"
           kind  = "Rule"
-          services = [{ name = "minio", namespace = "default", port = 9000 }]
+          services = [
+            {
+              name      = "minio"
+              namespace = "default"
+              port      = 9000
+            }
+          ]
           middlewares = [{ name = "strip-prefixes", namespace = "traefik" }]
         },
         # Minio Console
         {
           match = "Host(`avocado.tail799250.ts.net`) && PathPrefix(`/console`)"
           kind  = "Rule"
-          services = [{ name = "minio", namespace = "default", port = 9001 }]
+          services = [
+            {
+              name      = "minio"
+              namespace = "default"
+              port      = 9001
+            }
+          ]
           middlewares = [{ name = "strip-prefixes", namespace = "traefik" }]
         }
       ]

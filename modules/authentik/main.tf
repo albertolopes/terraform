@@ -41,6 +41,8 @@ resource "kubernetes_config_map_v1" "authentik_env" {
     "AUTHENTIK_POSTGRESQL__USER"   = "authentik"
     "AUTHENTIK_POSTGRESQL__NAME"   = "authentik"
     "AUTHENTIK_ERROR_REPORTING__ENABLED" = "false"
+    # Configuração de Proxy Reverso conforme diagnóstico
+    "AUTHENTIK_LISTEN__TRUSTED_PROXY_CIDRS" = "10.0.0.0/8,172.16.0.0/12,192.168.0.0/16"
   }
 }
 
@@ -75,6 +77,11 @@ resource "kubernetes_deployment_v1" "postgresql" {
           }
           port { container_port = 5432 }
 
+          volume_mount {
+            name       = "pg-data"
+            mount_path = "/var/lib/postgresql/data"
+          }
+
           liveness_probe {
             exec {
               command = ["pg_isready", "-d", "authentik", "-U", "authentik"]
@@ -82,6 +89,12 @@ resource "kubernetes_deployment_v1" "postgresql" {
             initial_delay_seconds = 20
             period_seconds        = 30
             failure_threshold     = 5
+          }
+        }
+        volume {
+          name = "pg-data"
+          persistent_volume_claim {
+            claim_name = kubernetes_persistent_volume_claim_v1.authentik_pg.metadata[0].name
           }
         }
       }
@@ -96,7 +109,25 @@ resource "kubernetes_service_v1" "postgresql" {
   }
   spec {
     selector = { app = "authentik-postgresql" }
-    port { port = 5432 }
+    port {
+      name = "postgres"
+      port = 5432
+    }
+  }
+}
+
+resource "kubernetes_persistent_volume_claim_v1" "authentik_pg" {
+  metadata {
+    name      = "authentik-pg-pvc"
+    namespace = kubernetes_namespace_v1.authentik.metadata[0].name
+  }
+  spec {
+    access_modes = ["ReadWriteOnce"]
+    resources {
+      requests = {
+        storage = "5Gi"
+      }
+    }
   }
 }
 
@@ -120,6 +151,11 @@ resource "kubernetes_deployment_v1" "redis" {
           command = ["redis-server", "--save", "60", "1", "--loglevel", "warning"]
           port { container_port = 6379 }
 
+          volume_mount {
+            name       = "redis-data"
+            mount_path = "/data"
+          }
+
           liveness_probe {
             exec {
               command = ["sh", "-c", "redis-cli ping | grep PONG"]
@@ -127,6 +163,12 @@ resource "kubernetes_deployment_v1" "redis" {
             initial_delay_seconds = 20
             period_seconds        = 30
             failure_threshold     = 5
+          }
+        }
+        volume {
+          name = "redis-data"
+          persistent_volume_claim {
+            claim_name = kubernetes_persistent_volume_claim_v1.authentik_redis.metadata[0].name
           }
         }
       }
@@ -141,7 +183,25 @@ resource "kubernetes_service_v1" "redis" {
   }
   spec {
     selector = { app = "authentik-redis" }
-    port { port = 6379 }
+    port {
+      name = "redis"
+      port = 6379
+    }
+  }
+}
+
+resource "kubernetes_persistent_volume_claim_v1" "authentik_redis" {
+  metadata {
+    name      = "authentik-redis-pvc"
+    namespace = kubernetes_namespace_v1.authentik.metadata[0].name
+  }
+  spec {
+    access_modes = ["ReadWriteOnce"]
+    resources {
+      requests = {
+        storage = "2Gi"
+      }
+    }
   }
 }
 
