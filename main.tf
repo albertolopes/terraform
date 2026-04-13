@@ -17,9 +17,9 @@ resource "random_password" "authentik_secret_key" {
 
 # --- Infraestrutura Base ---
 module "k3d_cluster" {
-  source               = "./modules/k3d-cluster"
-  cluster_config_path  = "${path.module}/cluster.yaml"
-  scripts_path         = "${path.module}/scripts"
+  source              = "./modules/k3d-cluster"
+  cluster_config_path = "${path.module}/cluster.yaml"
+  scripts_path        = "${path.module}/scripts"
 }
 
 # --- Object Storage ---
@@ -28,7 +28,13 @@ module "minio" {
   minio_access_key = var.minio_access_key
   minio_secret_key = random_password.minio_secret_key.result
   domain_name      = var.domain_name
-  depends_on       = [module.k3d_cluster]
+
+  providers = {
+    helm       = helm
+    kubernetes = kubernetes
+  }
+
+  depends_on = [module.k3d_cluster]
 }
 
 # --- Gerenciamento de Identidade (Authentik) ---
@@ -36,6 +42,12 @@ module "authentik" {
   source     = "./modules/authentik"
   pg_pass    = random_password.authentik_pg_pass.result
   secret_key = random_password.authentik_secret_key.result
+
+  providers = {
+    helm       = helm
+    kubernetes = kubernetes
+  }
+
   depends_on = [module.k3d_cluster]
 }
 
@@ -45,5 +57,11 @@ module "traefik" {
   domain_name      = var.domain_name
   admin_email      = var.admin_email
   enable_dashboard = true
-  depends_on       = [module.k3d_cluster]
+
+  providers = {
+    helm       = helm
+    kubernetes = kubernetes
+  }
+
+  depends_on = [module.k3d_cluster]
 }

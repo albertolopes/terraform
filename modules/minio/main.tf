@@ -1,3 +1,14 @@
+terraform {
+  required_providers {
+    helm = {
+      source = "hashicorp/helm"
+    }
+    kubernetes = {
+      source = "hashicorp/kubernetes"
+    }
+  }
+}
+
 variable "minio_access_key" {
   description = "Minio root user"
   type        = string
@@ -19,9 +30,10 @@ resource "kubernetes_secret_v1" "minio_credentials" {
     name      = "minio-credentials"
     namespace = "default"
   }
+
   data = {
-    rootUser     = var.minio_access_key
-    rootPassword = var.minio_secret_key
+    rootUser     = base64encode(var.minio_access_key)
+    rootPassword = base64encode(var.minio_secret_key)
   }
 }
 
@@ -35,24 +47,9 @@ resource "helm_release" "minio" {
   wait            = true
   timeout         = 600
 
-  set {
-    name  = "auth.existingSecret"
-    value = "minio-credentials"
-  }
-  set {
-    name  = "service.type"
-    value = "ClusterIP"
-  }
-  set {
-    name  = "defaultBuckets"
-    value = "terraform-state"
-  }
-  set {
-    name  = "extraEnvVars[0].name"
-    value = "MINIO_BROWSER_REDIRECT_URL"
-  }
-  set {
-    name  = "extraEnvVars[0].value"
-    value = "https://${var.domain_name}/console"
-  }
+  values = [
+    templatefile("${path.module}/values.yaml", {
+      domain_name = var.domain_name
+    })
+  ]
 }
