@@ -6,123 +6,24 @@ resource "kubernetes_namespace_v1" "gitlab" {
   }
 }
 
-resource "helm_release" "gitlab" {
-  name       = "gitlab"
-  repository = "https://charts.gitlab.io"
-  chart      = "gitlab"
-  namespace  = kubernetes_namespace_v1.gitlab.metadata[0].name
-  timeout    = 600
+# ===== SECRETS =====
 
-  # ===== DOMÍNIO =====
-  set {
-    name  = "global.hosts.domain"
-    value = var.domain_name
-  }
-  set {
-    name  = "global.hosts.https"
-    value = "false"
+# Secret para o PostgreSQL (formato que o GitLab espera)
+resource "kubernetes_secret_v1" "postgresql_password" {
+  metadata {
+    name      = "postgresql-password"
+    namespace = kubernetes_namespace_v1.gitlab.metadata[0].name
   }
 
-  # ===== INGRESS =====
-  set {
-    name  = "global.ingress.enabled"
-    value = "true"
-  }
-  set {
-    name  = "global.ingress.class"
-    value = "traefik"
-  }
-  set {
-    name  = "global.ingress.createIngressClass"
-    value = "false"
-  }
-  set {
-    name  = "global.ingress.tls.enabled"
-    value = "false"
+  data = {
+    postgresql-password         = base64encode("postgres")
+    postgresql-postgres-password = base64encode("postgres")
   }
 
-  # ===== SENHA ROOT =====
-  set {
-    name  = "global.initialRootPassword.secret"
-    value = "gitlab-root-secret"
-  }
-
-  # ===== POSTGRESQL EXTERNO =====
-  set {
-    name  = "postgresql.install"
-    value = "false"
-  }
-  set {
-    name  = "global.psql.host"
-    value = "postgres.postgres.svc.cluster.local"
-  }
-  set {
-    name  = "global.psql.port"
-    value = "5433"
-  }
-  set {
-    name  = "global.psql.username"
-    value = "postgres"
-  }
-  set {
-    name  = "global.psql.password.secret"
-    value = "gitlab-postgres-secret"
-  }
-  set {
-    name  = "global.psql.database"
-    value = "gitlabhq_production"
-  }
-
-  # ===== REDIS INTERNO =====
-  set {
-    name  = "redis.install"
-    value = "true"
-  }
-  set {
-    name  = "redis.auth.password"
-    value = "gitlab-redis-password"
-  }
-
-  # ===== RECURSOS MÍNIMOS =====
-  set {
-    name  = "gitlab.webservice.minReplicas"
-    value = "1"
-  }
-  set {
-    name  = "gitlab.webservice.maxReplicas"
-    value = "1"
-  }
-  set {
-    name  = "gitlab.sidekiq.minReplicas"
-    value = "1"
-  }
-  set {
-    name  = "gitlab.sidekiq.maxReplicas"
-    value = "1"
-  }
-
-  # ===== DESABILITAR COMPONENTES (SINTAXE CORRETA) =====
-  set {
-    name  = "gitlab-runner.install"
-    value = "false"
-  }
-  set {
-    name  = "minio.install"
-    value = "false"
-  }
-  set {
-    name  = "registry.enabled"
-    value = "false"
-  }
-  set {
-    name  = "prometheus.install"
-    value = "false"
-  }
-
-  depends_on = [kubernetes_namespace_v1.gitlab]
+  type = "Opaque"
 }
 
-# ===== SECRETS =====
+# Secret para a senha root do GitLab
 resource "kubernetes_secret_v1" "gitlab_root_secret" {
   metadata {
     name      = "gitlab-root-secret"
@@ -136,6 +37,7 @@ resource "kubernetes_secret_v1" "gitlab_root_secret" {
   type = "Opaque"
 }
 
+# Secret para o PostgreSQL externo
 resource "kubernetes_secret_v1" "gitlab_postgres_secret" {
   metadata {
     name      = "gitlab-postgres-secret"
@@ -149,6 +51,7 @@ resource "kubernetes_secret_v1" "gitlab_postgres_secret" {
   type = "Opaque"
 }
 
+# Secret para o Redis
 resource "kubernetes_secret_v1" "gitlab_redis_secret" {
   metadata {
     name      = "gitlab-redis-secret"
@@ -160,4 +63,147 @@ resource "kubernetes_secret_v1" "gitlab_redis_secret" {
   }
 
   type = "Opaque"
+}
+
+# ===== MINIO SECRETS =====
+resource "kubernetes_secret_v1" "gitlab_minio_secret" {
+  metadata {
+    name      = "gitlab-minio-secret"
+    namespace = kubernetes_namespace_v1.gitlab.metadata[0].name
+  }
+
+  data = {
+    accesskey = base64encode("minioadmin")
+    secretkey = base64encode("minioadmin123")
+  }
+
+  type = "Opaque"
+}
+
+# ===== HELM RELEASE =====
+resource "helm_release" "gitlab" {
+  name       = "gitlab"
+  repository = "https://charts.gitlab.io"
+  chart      = "gitlab"
+  namespace  = kubernetes_namespace_v1.gitlab.metadata[0].name
+  timeout    = 600
+
+  # Usar values YAML para maior controle
+  values = [
+    <<-YAML
+    # ===== COMPONENTES HABILITADOS =====
+    certmanager:
+      install: true
+      email: albertolopes@mail.com
+
+    prometheus:
+      install: false
+
+    gitlab-runner:
+      install: false
+
+    minio:
+      install: true
+      mode: standalone
+      auth:
+        existingSecret: gitlab-minio-secret
+
+    registry:
+      enabled: false
+
+    nginx-ingress:
+      enabled: false
+
+    # ===== POSTGRESQL EXTERNO =====
+    postgresql:
+      install: false
+
+    global:
+      hosts:
+        domain: ${var.domain_name}
+        https: false
+
+      ingress:
+        enabled: true
+        class: traefik
+        createIngressClass: false
+        tls:
+          enabled: false
+        configureCertmanager: false
+
+      initialRootPassword:
+        secret: gitlab-root-secret
+
+      psql:
+        host: postgres.postgres.svc.cluster.local
+        port: 5433
+        username: postgres
+        password:
+          secret: gitlab-postgres-secret
+          key: password
+        database: gitlabhq_production
+
+    # ===== REDIS INTERNO =====
+    redis:
+      install: true
+      auth:
+        existingSecret: gitlab-redis-secret
+        enabled: true
+
+    # ===== RECURSOS MÍNIMOS =====
+    gitlab:
+      webservice:
+        minReplicas: 1
+        maxReplicas: 1
+        resources:
+          requests:
+            cpu: 200m
+            memory: 512Mi
+
+      sidekiq:
+        minReplicas: 1
+        maxReplicas: 1
+        resources:
+          requests:
+            cpu: 100m
+            memory: 256Mi
+
+      gitaly:
+        resources:
+          requests:
+            cpu: 100m
+            memory: 256Mi
+
+      gitlab-shell:
+        minReplicas: 1
+        maxReplicas: 1
+        resources:
+          requests:
+            cpu: 50m
+            memory: 64Mi
+
+      kas:
+        minReplicas: 1
+        maxReplicas: 1
+        resources:
+          requests:
+            cpu: 50m
+            memory: 64Mi
+
+      toolbox:
+        enabled: true
+
+      migrations:
+        enabled: true
+    YAML
+  ]
+
+  depends_on = [
+    kubernetes_namespace_v1.gitlab,
+    kubernetes_secret_v1.postgresql_password,
+    kubernetes_secret_v1.gitlab_root_secret,
+    kubernetes_secret_v1.gitlab_postgres_secret,
+    kubernetes_secret_v1.gitlab_redis_secret,
+    kubernetes_secret_v1.gitlab_minio_secret
+  ]
 }
