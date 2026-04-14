@@ -21,19 +21,6 @@ module "traefik" {
   depends_on = [module.k3d_cluster]
 }
 
-module "gitlab" {
-  source        = "./modules/gitlab"
-  domain_name   = "gitlab.${var.domain_name}"
-  root_password = var.gitlab_root_password
-
-  providers = {
-    helm       = helm
-    kubernetes = kubernetes
-  }
-
-  depends_on = [module.traefik]
-}
-
 module "postgres" {
   source = "./modules/postgres"
 
