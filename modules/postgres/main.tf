@@ -95,7 +95,7 @@ resource "kubernetes_deployment_v1" "postgres" {
       spec {
         container {
           name  = "postgres"
-          image = "postgres:15-alpine"
+          image = "postgres:16-alpine"
 
           env {
             name  = "POSTGRES_HOST_AUTH_METHOD"
