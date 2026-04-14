@@ -18,14 +18,14 @@ resource "kubernetes_config_map_v1" "postgres_init" {
 
   data = {
     "init.sql" = <<-EOT
-      -- CRIA O USUÁRIO POSTGRES (SOLUÇÃO!)
-      CREATE USER postgres WITH PASSWORD 'postgres';
+      -- CRIA O USUÁRIO POSTGRES COM PERMISSÃO DE SUPERUSUÁRIO
+      CREATE USER postgres WITH SUPERUSER PASSWORD 'postgres';
 
       -- Criar bancos de dados
-      CREATE DATABASE gitlabhq_production;
-      CREATE DATABASE "na-palma";
+      CREATE DATABASE gitlabhq_production OWNER postgres;
+      CREATE DATABASE "na-palma" OWNER postgres;
 
-      -- Conceder privilégios
+      -- Garantir privilégios
       GRANT ALL PRIVILEGES ON DATABASE gitlabhq_production TO postgres;
       GRANT ALL PRIVILEGES ON DATABASE "na-palma" TO postgres;
     EOT
@@ -199,26 +199,43 @@ resource "kubernetes_deployment_v1" "postgres" {
   ]
 }
 
-# Recurso para configurar permissões do PostgreSQL 16
+# Recurso para configurar permissões completas do PostgreSQL 16 (recomendado pelo Panda)
 resource "null_resource" "postgres_permissions" {
   depends_on = [kubernetes_deployment_v1.postgres]
 
   provisioner "local-exec" {
     command = <<-EOT
       echo "Aguardando PostgreSQL ficar pronto..."
-      kubectl wait --for=condition=ready pod -l app=postgres -n postgres --timeout=120s
+      kubectl wait --for=condition=ready pod -l app=postgres -n postgres --timeout=120s || exit 1
 
-      echo "Configurando permissões para o banco gitlabhq_production..."
-      kubectl exec -n postgres deployment/postgres -- psql -h localhost -p 5433 -U postgres -d gitlabhq_production -c "GRANT ALL ON SCHEMA public TO postgres;"
-      kubectl exec -n postgres deployment/postgres -- psql -h localhost -p 5433 -U postgres -d gitlabhq_production -c "ALTER SCHEMA public OWNER TO postgres;"
-      kubectl exec -n postgres deployment/postgres -- psql -h localhost -p 5433 -U postgres -d gitlabhq_production -c "ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO postgres;"
+      echo "Configurando permissões para o usuário postgres..."
 
-      echo "Permissões configuradas!"
+      # Verificar e criar bancos se não existirem
+      for db in gitlabhq_production "na-palma"; do
+        if ! kubectl exec -n postgres deployment/postgres -- psql -h localhost -p 5433 -U postgres -lqt | cut -d \| -f 1 | grep -qw "$db"; then
+          echo "Criando banco $db..."
+          kubectl exec -n postgres deployment/postgres -- psql -h localhost -p 5433 -U postgres -c "CREATE DATABASE \"$db\" OWNER postgres;" || exit 1
+        fi
+
+        echo "Configurando permissões completas para $db..."
+        kubectl exec -n postgres deployment/postgres -- psql -h localhost -p 5433 -U postgres -d "$db" -c "GRANT ALL PRIVILEGES ON DATABASE \"$db\" TO postgres;" || exit 1
+        kubectl exec -n postgres deployment/postgres -- psql -h localhost -p 5433 -U postgres -d "$db" -c "GRANT ALL ON SCHEMA public TO postgres;" || exit 1
+        kubectl exec -n postgres deployment/postgres -- psql -h localhost -p 5433 -U postgres -d "$db" -c "ALTER SCHEMA public OWNER TO postgres;" || exit 1
+        kubectl exec -n postgres deployment/postgres -- psql -h localhost -p 5433 -U postgres -d "$db" -c "ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO postgres;" || exit 1
+        kubectl exec -n postgres deployment/postgres -- psql -h localhost -p 5433 -U postgres -d "$db" -c "ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO postgres;" || exit 1
+        kubectl exec -n postgres deployment/postgres -- psql -h localhost -p 5433 -U postgres -d "$db" -c "ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON FUNCTIONS TO postgres;" || exit 1
+        kubectl exec -n postgres deployment/postgres -- psql -h localhost -p 5433 -U postgres -d "$db" -c "ALTER DATABASE \"$db\" OWNER TO postgres;" || exit 1
+      done
+
+      echo "Permissões completas configuradas para o usuário postgres!"
+      echo "Usuário é OWNER de todos os bancos e schemas!"
     EOT
 
     environment = {
       KUBECONFIG = "${path.cwd}/.k3d_kubeconfig"
     }
+
+    timeout = 300
   }
 }
 
