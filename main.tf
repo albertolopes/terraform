@@ -43,3 +43,17 @@ module "postgres" {
 
   depends_on = [module.k3d_cluster]
 }
+
+module "gitlab" {
+  source        = "./modules/gitlab"
+  domain_name   = "gitlab.${var.domain_name}"
+  root_password = var.gitlab_root_password
+
+  providers = {
+    helm       = helm
+    kubernetes = kubernetes
+    kubectl    = kubectl
+  }
+
+  depends_on = [module.postgres, module.traefik]
+}

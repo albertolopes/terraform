@@ -199,6 +199,29 @@ resource "kubernetes_deployment_v1" "postgres" {
   ]
 }
 
+# Recurso para configurar permissões do PostgreSQL 16
+resource "null_resource" "postgres_permissions" {
+  depends_on = [kubernetes_deployment_v1.postgres]
+
+  provisioner "local-exec" {
+    command = <<-EOT
+      echo "Aguardando PostgreSQL ficar pronto..."
+      kubectl wait --for=condition=ready pod -l app=postgres -n postgres --timeout=120s
+
+      echo "Configurando permissões para o banco gitlabhq_production..."
+      kubectl exec -n postgres deployment/postgres -- psql -h localhost -p 5433 -U postgres -d gitlabhq_production -c "GRANT ALL ON SCHEMA public TO postgres;"
+      kubectl exec -n postgres deployment/postgres -- psql -h localhost -p 5433 -U postgres -d gitlabhq_production -c "ALTER SCHEMA public OWNER TO postgres;"
+      kubectl exec -n postgres deployment/postgres -- psql -h localhost -p 5433 -U postgres -d gitlabhq_production -c "ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO postgres;"
+
+      echo "Permissões configuradas!"
+    EOT
+
+    environment = {
+      KUBECONFIG = "${path.cwd}/.k3d_kubeconfig"
+    }
+  }
+}
+
 resource "kubernetes_service_v1" "postgres" {
   metadata {
     name      = "postgres"
@@ -219,5 +242,5 @@ resource "kubernetes_service_v1" "postgres" {
     }
   }
 
-  depends_on = [kubernetes_deployment_v1.postgres]
+  depends_on = [null_resource.postgres_permissions]
 }
