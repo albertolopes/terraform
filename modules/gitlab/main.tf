@@ -1,5 +1,18 @@
 # modules/gitlab/main.tf
 
+terraform {
+  required_providers {
+    kubernetes = {
+      source  = "hashicorp/kubernetes"
+      version = ">= 2.0.0"
+    }
+    helm = {
+      source  = "hashicorp/helm"
+      version = ">= 2.0.0"
+    }
+  }
+}
+
 resource "kubernetes_namespace_v1" "gitlab" {
   metadata {
     name = var.namespace
@@ -74,14 +87,45 @@ resource "kubernetes_secret_v1" "gitlab_minio_secret" {
 }
 
 resource "helm_release" "gitlab" {
-  name       = "gitlab"
-  repository = "https://charts.gitlab.io"
-  chart      = "gitlab"
-  namespace  = kubernetes_namespace_v1.gitlab.metadata[0].name
-  timeout    = 600
+  name             = "gitlab"
+  repository       = "https://gitlab-charts.storage.googleapis.com/"
+  chart            = "gitlab"
+  version          = "8.8.2"
+  namespace        = kubernetes_namespace_v1.gitlab.metadata[0].name
+  timeout          = 600
+  create_namespace = false
+  wait             = true
+  wait_for_jobs    = true
+  force_update     = true
+  recreate_pods    = true
 
   values = [
     <<-YAML
+    global:
+      hosts:
+        domain: ${var.domain_name}
+        https: false
+      ingress:
+        enabled: true
+        class: traefik
+        createIngressClass: false
+        tls:
+          enabled: false
+        configureCertmanager: false
+      initialRootPassword:
+        secret: gitlab-root-secret
+      psql:
+        host: postgres.postgres.svc.cluster.local
+        port: 5433
+        username: postgres
+        password:
+          secret: gitlab-postgres-secret
+          key: password
+        database: gitlabhq_production
+
+    certmanager:
+      install: false
+
     prometheus:
       install: false
 
@@ -102,31 +146,6 @@ resource "helm_release" "gitlab" {
 
     postgresql:
       install: false
-
-    global:
-      hosts:
-        domain: ${var.domain_name}
-        https: false
-
-      ingress:
-        enabled: true
-        class: traefik
-        createIngressClass: false
-        tls:
-          enabled: false
-        configureCertmanager: false
-
-      initialRootPassword:
-        secret: gitlab-root-secret
-
-      psql:
-        host: postgres.postgres.svc.cluster.local
-        port: 5433
-        username: postgres
-        password:
-          secret: gitlab-postgres-secret
-          key: password
-        database: gitlabhq_production
 
     redis:
       install: true
