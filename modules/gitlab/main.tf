@@ -12,8 +12,8 @@ resource "kubernetes_secret_v1" "gitlab_root_secret" {
     namespace = kubernetes_namespace_v1.gitlab.metadata[0].name
   }
 
-  data = {
-    password = var.root_password != null ? base64encode(var.root_password) : base64encode("changeme123")
+  string_data = {
+    password = var.root_password != null ? var.root_password : "changeme123"
   }
 
   type = "Opaque"
@@ -25,8 +25,8 @@ resource "kubernetes_secret_v1" "gitlab_postgres_secret" {
     namespace = kubernetes_namespace_v1.gitlab.metadata[0].name
   }
 
-  data = {
-    password = base64encode("postgres")
+  string_data = {
+    password = "postgres"
   }
 
   type = "Opaque"
@@ -38,8 +38,8 @@ resource "kubernetes_secret_v1" "gitlab_redis_secret" {
     namespace = kubernetes_namespace_v1.gitlab.metadata[0].name
   }
 
-  data = {
-    redis-password = base64encode("gitlab-redis-password")
+  string_data = {
+    redis-password = "gitlab-redis-password"
   }
 
   type = "Opaque"
@@ -51,9 +51,9 @@ resource "kubernetes_secret_v1" "gitlab_minio_secret" {
     namespace = kubernetes_namespace_v1.gitlab.metadata[0].name
   }
 
-  data = {
-    accesskey = base64encode("minioadmin")
-    secretkey = base64encode("minioadmin123")
+  string_data = {
+    accesskey = "minioadmin"
+    secretkey = "minioadmin123"
   }
 
   type = "Opaque"
