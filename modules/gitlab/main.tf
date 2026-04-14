@@ -1,12 +1,28 @@
 # modules/gitlab/main.tf
 
+terraform {
+  required_providers {
+    kubectl = {
+      source  = "alekc/kubectl"
+      version = ">= 2.0"
+    }
+    kubernetes = {
+      source  = "hashicorp/kubernetes"
+      version = ">= 2.0.0"
+    }
+    helm = {
+      source  = "hashicorp/helm"
+      version = ">= 2.0.0"
+    }
+  }
+}
+
 resource "kubernetes_namespace_v1" "gitlab" {
   metadata {
     name = var.namespace
   }
 }
 
-# Usando kubectl_manifest para ter suporte a stringData
 resource "kubectl_manifest" "gitlab_root_secret" {
   yaml_body = <<-YAML
     apiVersion: v1

@@ -55,4 +55,8 @@ provider "helm" {
   }
 }
 
+provider "kubectl" {
+  config_path = fileexists(local.kubeconfig_path) ? local.kubeconfig_path : null
+}
+
 provider "docker" {}
