@@ -16,7 +16,7 @@ resource "kubernetes_secret_v1" "postgresql_password" {
   }
 
   data = {
-    postgresql-password         = base64encode("postgres")
+    postgresql-password          = base64encode("postgres")
     postgresql-postgres-password = base64encode("postgres")
   }
 
@@ -92,10 +92,6 @@ resource "helm_release" "gitlab" {
   values = [
     <<-YAML
     # ===== COMPONENTES HABILITADOS =====
-    certmanager:
-      install: true
-      email: albertolopes@mail.com
-
     prometheus:
       install: false
 
