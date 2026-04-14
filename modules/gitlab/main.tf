@@ -76,7 +76,7 @@ resource "kubernetes_secret_v1" "gitlab_minio_secret" {
 resource "helm_release" "gitlab" {
   name             = "gitlab"
   repository       = "https://charts.gitlab.io/"
-  chart            = "gitlab/gitlab"
+  chart            = "gitlab"
   namespace        = kubernetes_namespace_v1.gitlab.metadata[0].name
   timeout          = 600
   create_namespace = false
