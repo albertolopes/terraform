@@ -93,9 +93,6 @@ resource "helm_release" "gitlab" {
           key: password
         database: gitlabhq_production
 
-    certmanager:
-      install: false
-
     prometheus:
       install: false
 
