@@ -199,7 +199,7 @@ resource "kubernetes_deployment_v1" "postgres" {
   ]
 }
 
-# Recurso para configurar permissões completas do PostgreSQL 16 (recomendado pelo Panda)
+# Recurso para configurar permissões completas do PostgreSQL 16
 resource "null_resource" "postgres_permissions" {
   depends_on = [kubernetes_deployment_v1.postgres]
 
@@ -234,8 +234,6 @@ resource "null_resource" "postgres_permissions" {
     environment = {
       KUBECONFIG = "${path.cwd}/.k3d_kubeconfig"
     }
-
-    timeout = 300
   }
 }
 
