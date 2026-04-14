@@ -6,20 +6,6 @@ resource "kubernetes_namespace_v1" "gitlab" {
   }
 }
 
-resource "kubernetes_secret_v1" "postgresql_password" {
-  metadata {
-    name      = "postgresql-password"
-    namespace = kubernetes_namespace_v1.gitlab.metadata[0].name
-  }
-
-  data = {
-    postgresql-password          = base64encode("postgres")
-    postgresql-postgres-password = base64encode("postgres")
-  }
-
-  type = "Opaque"
-}
-
 resource "kubernetes_secret_v1" "gitlab_root_secret" {
   metadata {
     name      = "gitlab-root-secret"
@@ -82,8 +68,6 @@ resource "helm_release" "gitlab" {
   create_namespace = false
   wait             = true
   wait_for_jobs    = true
-  force_update     = true
-  recreate_pods    = true
 
   values = [
     <<-YAML
@@ -197,7 +181,6 @@ resource "helm_release" "gitlab" {
 
   depends_on = [
     kubernetes_namespace_v1.gitlab,
-    kubernetes_secret_v1.postgresql_password,
     kubernetes_secret_v1.gitlab_root_secret,
     kubernetes_secret_v1.gitlab_postgres_secret,
     kubernetes_secret_v1.gitlab_redis_secret,
