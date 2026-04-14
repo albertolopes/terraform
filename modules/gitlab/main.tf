@@ -6,57 +6,58 @@ resource "kubernetes_namespace_v1" "gitlab" {
   }
 }
 
-resource "kubernetes_secret_v1" "gitlab_root_secret" {
-  metadata {
-    name      = "gitlab-root-secret"
-    namespace = kubernetes_namespace_v1.gitlab.metadata[0].name
-  }
-
-  data = {
-    password = var.root_password != null ? base64encode(var.root_password) : base64encode("changeme123")
-  }
-
-  type = "Opaque"
+# Usando kubectl_manifest para ter suporte a stringData
+resource "kubectl_manifest" "gitlab_root_secret" {
+  yaml_body = <<-YAML
+    apiVersion: v1
+    kind: Secret
+    metadata:
+      name: gitlab-root-secret
+      namespace: ${var.namespace}
+    type: Opaque
+    stringData:
+      password: ${var.root_password != null ? var.root_password : "changeme123"}
+  YAML
 }
 
-resource "kubernetes_secret_v1" "gitlab_postgres_secret" {
-  metadata {
-    name      = "gitlab-postgres-secret"
-    namespace = kubernetes_namespace_v1.gitlab.metadata[0].name
-  }
-
-  data = {
-    password = "cG9zdGdyZXM="  # "postgres" em base64
-  }
-
-  type = "Opaque"
+resource "kubectl_manifest" "gitlab_postgres_secret" {
+  yaml_body = <<-YAML
+    apiVersion: v1
+    kind: Secret
+    metadata:
+      name: gitlab-postgres-secret
+      namespace: ${var.namespace}
+    type: Opaque
+    stringData:
+      password: postgres
+  YAML
 }
 
-resource "kubernetes_secret_v1" "gitlab_redis_secret" {
-  metadata {
-    name      = "gitlab-redis-secret"
-    namespace = kubernetes_namespace_v1.gitlab.metadata[0].name
-  }
-
-  data = {
-    redis-password = base64encode("gitlab-redis-password")
-  }
-
-  type = "Opaque"
+resource "kubectl_manifest" "gitlab_redis_secret" {
+  yaml_body = <<-YAML
+    apiVersion: v1
+    kind: Secret
+    metadata:
+      name: gitlab-redis-secret
+      namespace: ${var.namespace}
+    type: Opaque
+    stringData:
+      redis-password: gitlab-redis-password
+  YAML
 }
 
-resource "kubernetes_secret_v1" "gitlab_minio_secret" {
-  metadata {
-    name      = "gitlab-minio-secret"
-    namespace = kubernetes_namespace_v1.gitlab.metadata[0].name
-  }
-
-  data = {
-    accesskey = base64encode("minioadmin")
-    secretkey = base64encode("minioadmin123")
-  }
-
-  type = "Opaque"
+resource "kubectl_manifest" "gitlab_minio_secret" {
+  yaml_body = <<-YAML
+    apiVersion: v1
+    kind: Secret
+    metadata:
+      name: gitlab-minio-secret
+      namespace: ${var.namespace}
+    type: Opaque
+    stringData:
+      accesskey: minioadmin
+      secretkey: minioadmin123
+  YAML
 }
 
 resource "helm_release" "gitlab" {
@@ -178,9 +179,9 @@ resource "helm_release" "gitlab" {
 
   depends_on = [
     kubernetes_namespace_v1.gitlab,
-    kubernetes_secret_v1.gitlab_root_secret,
-    kubernetes_secret_v1.gitlab_postgres_secret,
-    kubernetes_secret_v1.gitlab_redis_secret,
-    kubernetes_secret_v1.gitlab_minio_secret
+    kubectl_manifest.gitlab_root_secret,
+    kubectl_manifest.gitlab_postgres_secret,
+    kubectl_manifest.gitlab_redis_secret,
+    kubectl_manifest.gitlab_minio_secret
   ]
 }
