@@ -6,9 +6,6 @@ resource "kubernetes_namespace_v1" "gitlab" {
   }
 }
 
-# ===== SECRETS =====
-
-# Secret para o PostgreSQL (formato que o GitLab espera)
 resource "kubernetes_secret_v1" "postgresql_password" {
   metadata {
     name      = "postgresql-password"
@@ -23,7 +20,6 @@ resource "kubernetes_secret_v1" "postgresql_password" {
   type = "Opaque"
 }
 
-# Secret para a senha root do GitLab
 resource "kubernetes_secret_v1" "gitlab_root_secret" {
   metadata {
     name      = "gitlab-root-secret"
@@ -37,7 +33,6 @@ resource "kubernetes_secret_v1" "gitlab_root_secret" {
   type = "Opaque"
 }
 
-# Secret para o PostgreSQL externo
 resource "kubernetes_secret_v1" "gitlab_postgres_secret" {
   metadata {
     name      = "gitlab-postgres-secret"
@@ -51,7 +46,6 @@ resource "kubernetes_secret_v1" "gitlab_postgres_secret" {
   type = "Opaque"
 }
 
-# Secret para o Redis
 resource "kubernetes_secret_v1" "gitlab_redis_secret" {
   metadata {
     name      = "gitlab-redis-secret"
@@ -65,7 +59,6 @@ resource "kubernetes_secret_v1" "gitlab_redis_secret" {
   type = "Opaque"
 }
 
-# ===== MINIO SECRETS =====
 resource "kubernetes_secret_v1" "gitlab_minio_secret" {
   metadata {
     name      = "gitlab-minio-secret"
@@ -80,7 +73,6 @@ resource "kubernetes_secret_v1" "gitlab_minio_secret" {
   type = "Opaque"
 }
 
-# ===== HELM RELEASE =====
 resource "helm_release" "gitlab" {
   name       = "gitlab"
   repository = "https://charts.gitlab.io"
@@ -88,10 +80,8 @@ resource "helm_release" "gitlab" {
   namespace  = kubernetes_namespace_v1.gitlab.metadata[0].name
   timeout    = 600
 
-  # Usar values YAML para maior controle
   values = [
     <<-YAML
-    # ===== COMPONENTES HABILITADOS =====
     prometheus:
       install: false
 
@@ -110,7 +100,6 @@ resource "helm_release" "gitlab" {
     nginx-ingress:
       enabled: false
 
-    # ===== POSTGRESQL EXTERNO =====
     postgresql:
       install: false
 
@@ -139,21 +128,22 @@ resource "helm_release" "gitlab" {
           key: password
         database: gitlabhq_production
 
-    # ===== REDIS INTERNO =====
     redis:
       install: true
       auth:
         existingSecret: gitlab-redis-secret
         enabled: true
 
-    # ===== RECURSOS MÍNIMOS =====
     gitlab:
       webservice:
         minReplicas: 1
         maxReplicas: 1
         resources:
           requests:
-            cpu: 200m
+            cpu: 100m
+            memory: 256Mi
+          limits:
+            cpu: 500m
             memory: 512Mi
 
       sidekiq:
@@ -161,13 +151,19 @@ resource "helm_release" "gitlab" {
         maxReplicas: 1
         resources:
           requests:
-            cpu: 100m
+            cpu: 50m
+            memory: 128Mi
+          limits:
+            cpu: 200m
             memory: 256Mi
 
       gitaly:
         resources:
           requests:
-            cpu: 100m
+            cpu: 50m
+            memory: 128Mi
+          limits:
+            cpu: 200m
             memory: 256Mi
 
       gitlab-shell:
@@ -175,16 +171,16 @@ resource "helm_release" "gitlab" {
         maxReplicas: 1
         resources:
           requests:
-            cpu: 50m
-            memory: 64Mi
+            cpu: 25m
+            memory: 32Mi
 
       kas:
         minReplicas: 1
         maxReplicas: 1
         resources:
           requests:
-            cpu: 50m
-            memory: 64Mi
+            cpu: 25m
+            memory: 32Mi
 
       toolbox:
         enabled: true
