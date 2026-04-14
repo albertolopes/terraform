@@ -1,32 +1,20 @@
+# variables.tf (raiz do projeto)
+
 variable "domain_name" {
-  description = "The base domain name for the services."
+  description = "Domínio principal"
   type        = string
-  default     = "avocadotech.site"
+  default     = "avocado.tail799250.ts.net"
 }
 
 variable "admin_email" {
-  description = "Email for Let's Encrypt"
+  description = "Email do administrador"
   type        = string
-  default     = "admin@avocadotech.site"
+  default     = "admin@example.com"
 }
 
-# --- Usernames ---
-variable "keycloak_admin_user" {
-  description = "The admin username for Keycloak."
-  type        = string
-  default     = "admin"
-}
-
-variable "minio_access_key" {
-  description = "The access key (username) for Minio."
-  type        = string
-  default     = "minioadmin"
-}
-
-variable "cloudflare_api_token" {
-  description = "The API Token for Cloudflare DNS-01 challenge."
+variable "gitlab_root_password" {
+  description = "Senha inicial do root do GitLab"
   type        = string
   sensitive   = true
+  default     = "changeme123"
 }
-
-

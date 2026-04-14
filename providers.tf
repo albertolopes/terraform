@@ -1,5 +1,15 @@
+# providers.tf
+
 terraform {
   required_providers {
+    kubectl = {
+      source  = "alekc/kubectl"
+      version = ">= 2.0"
+    }
+    time = {
+      source  = "hashicorp/time"
+      version = ">= 0.9"
+    }
     null = {
       source  = "hashicorp/null"
       version = ">= 3.0.0"
@@ -24,6 +34,10 @@ terraform {
       source  = "hashicorp/local"
       version = ">= 2.0.0"
     }
+    docker = {
+      source  = "kreuzwerker/docker"
+      version = "~> 3.0"
+    }
   }
 }
 
@@ -36,7 +50,9 @@ provider "kubernetes" {
 }
 
 provider "helm" {
-  kubernetes = {
+  kubernetes {
     config_path = fileexists(local.kubeconfig_path) ? local.kubeconfig_path : null
   }
 }
+
+provider "docker" {}

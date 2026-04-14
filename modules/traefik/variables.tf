@@ -1,70 +1,43 @@
-variable "domain_name" {
-  description = "Base domain name"
-  type        = string
-}
-
-variable "admin_email" {
-  description = "Email for Let's Encrypt certificates"
-  type        = string
-}
-
-variable "enable_dashboard" {
-  description = "Enable Traefik dashboard"
-  type        = bool
-  default     = true
-}
-
-variable "enable_access_logs" {
-  description = "Enable access logs"
-  type        = bool
-  default     = true
-}
+# modules/traefik/variables.tf
 
 variable "replicas" {
-  description = "Number of replicas"
+  description = "Número de réplicas do Traefik"
   type        = number
-  default     = 2
+  default     = 1
 }
 
 variable "cpu_requests" {
-  description = "CPU requests"
+  description = "CPU requests para o Traefik"
   type        = string
   default     = "100m"
 }
 
-variable "memory_requests" {
-  description = "Memory requests"
-  type        = string
-  default     = "128Mi"
-}
-
 variable "cpu_limits" {
-  description = "CPU limits"
+  description = "CPU limits para o Traefik"
   type        = string
   default     = "500m"
 }
 
+variable "memory_requests" {
+  description = "Memória requests para o Traefik"
+  type        = string
+  default     = "128Mi"
+}
+
 variable "memory_limits" {
-  description = "Memory limits"
+  description = "Memória limits para o Traefik"
   type        = string
   default     = "512Mi"
 }
 
-variable "enable_minio" {
-  description = "Enable Minio ingress"
+variable "enable_dashboard" {
+  description = "Habilitar dashboard do Traefik"
   type        = bool
   default     = true
 }
 
-variable "dashboard_user" {
-  description = "Dashboard username"
+variable "domain_name" {
+  description = "Domínio para acessar o dashboard"
   type        = string
-  default     = "admin"
-}
-
-variable "dashboard_password" {
-  description = "Dashboard password"
-  type        = string
-  sensitive   = true
-  default     = "changeme"
+  default     = "avocado.tail799250.ts.net"
 }

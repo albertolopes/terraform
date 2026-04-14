@@ -1,3 +1,5 @@
+# modules/traefik/main.tf
+
 # Namespace para o Traefik
 resource "kubernetes_namespace_v1" "traefik" {
   metadata {
@@ -136,14 +138,33 @@ resource "kubernetes_config_map_v1" "traefik" {
   depends_on = [kubernetes_namespace_v1.traefik]
 }
 
-# Apply Traefik CRDs
-resource "null_resource" "traefik_crds" {
+# ===== SOLUÇÃO: Usar kubectl_manifest do provider kubectl =====
+# Mas como não temos, vamos usar null_resource com script que CRIA TUDO
+
+resource "null_resource" "install_traefik_crds_and_wait" {
   triggers = {
     namespace_name = kubernetes_namespace_v1.traefik.metadata[0].name
   }
 
   provisioner "local-exec" {
-    command = "kubectl apply -f https://raw.githubusercontent.com/traefik/traefik/v3.3/docs/content/reference/dynamic-configuration/kubernetes-crd-definition-v1.yml"
+    command = <<-EOT
+      echo "Aplicando CRDs do Traefik..."
+      kubectl apply -f https://raw.githubusercontent.com/traefik/traefik/v3.3/docs/content/reference/dynamic-configuration/kubernetes-crd-definition-v1.yml
+
+      echo "Aguardando CRDs estarem disponíveis..."
+      for i in $(seq 1 30); do
+        if kubectl get crd ingressroutes.traefik.io &>/dev/null && \
+           kubectl get crd middlewares.traefik.io &>/dev/null; then
+          echo "CRDs prontos!"
+          exit 0
+        fi
+        echo "Aguardando... ($i/30)"
+        sleep 2
+      done
+      echo "ERRO: Timeout aguardando CRDs"
+      exit 1
+    EOT
+
     environment = {
       KUBECONFIG = "${path.cwd}/.k3d_kubeconfig"
     }
@@ -270,7 +291,7 @@ resource "kubernetes_deployment_v1" "traefik" {
   depends_on = [
     kubernetes_config_map_v1.traefik,
     kubernetes_service_account_v1.traefik,
-    null_resource.traefik_crds
+    null_resource.install_traefik_crds_and_wait
   ]
 }
 
@@ -285,6 +306,8 @@ resource "kubernetes_ingress_class_v1" "traefik" {
   spec {
     controller = "traefik.io/ingress-controller"
   }
+
+  depends_on = [null_resource.install_traefik_crds_and_wait]
 }
 
 # Service LoadBalancer
@@ -323,7 +346,7 @@ resource "kubernetes_service_v1" "traefik" {
   depends_on = [kubernetes_deployment_v1.traefik]
 }
 
-# Secret para autenticação do dashboard (SENHA: admin123 em hash BCrypt)
+# Secret para autenticação do dashboard
 resource "kubernetes_secret_v1" "dashboard_auth" {
   metadata {
     name      = "traefik-dashboard-auth"
@@ -338,123 +361,110 @@ resource "kubernetes_secret_v1" "dashboard_auth" {
   depends_on = [kubernetes_namespace_v1.traefik]
 }
 
-# Middleware para autenticação do dashboard
-resource "kubernetes_manifest" "dashboard_auth" {
-  depends_on = [
-    kubernetes_secret_v1.dashboard_auth,
-    null_resource.traefik_crds
-  ]
-  manifest = {
-    apiVersion = "traefik.io/v1alpha1"
-    kind       = "Middleware"
-    metadata = {
-      name      = "dashboard-auth"
-      namespace = kubernetes_namespace_v1.traefik.metadata[0].name
-    }
-    spec = {
-      basicAuth = {
-        secret = "traefik-dashboard-auth"
+# ===== USAR kubectl apply via null_resource para os manifests =====
+# Isso garante que os CRDs já existem
+
+resource "null_resource" "apply_traefik_manifests" {
+  depends_on = [null_resource.install_traefik_crds_and_wait, kubernetes_secret_v1.dashboard_auth, kubernetes_service_v1.traefik]
+
+  triggers = {
+    dashboard_auth = sha256(jsonencode({
+      apiVersion = "traefik.io/v1alpha1"
+      kind       = "Middleware"
+      metadata = {
+        name      = "dashboard-auth"
+        namespace = kubernetes_namespace_v1.traefik.metadata[0].name
       }
+      spec = {
+        basicAuth = {
+          secret = "traefik-dashboard-auth"
+        }
+      }
+    }))
+  }
+
+  provisioner "local-exec" {
+    command = <<-EOT
+      echo "Aplicando Middleware dashboard-auth..."
+      kubectl apply -f - <<EOF
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: dashboard-auth
+  namespace: ${kubernetes_namespace_v1.traefik.metadata[0].name}
+spec:
+  basicAuth:
+    secret: traefik-dashboard-auth
+EOF
+    EOT
+
+    environment = {
+      KUBECONFIG = "${path.cwd}/.k3d_kubeconfig"
     }
   }
 }
 
-# Middleware StripPrefix (Para Minio, Console e Authentik)
-resource "kubernetes_manifest" "strip_prefixes" {
-  depends_on = [null_resource.traefik_crds]
-  manifest = {
-    apiVersion = "traefik.io/v1alpha1"
-    kind       = "Middleware"
-    metadata = {
-      name      = "strip-prefixes"
-      namespace = kubernetes_namespace_v1.traefik.metadata[0].name
-    }
-    spec = {
-      stripPrefix = {
-        prefixes = ["/minio", "/console", "/authentik"]
-      }
-    }
-  }
-}
-
-# Traefik IngressRoute para Dashboard, Minio e Authentik
-resource "kubernetes_manifest" "traefik_dashboard_unified" {
+resource "null_resource" "apply_traefik_dashboard" {
   count = var.enable_dashboard ? 1 : 0
 
-  depends_on = [
-    kubernetes_service_v1.traefik,
-    kubernetes_manifest.dashboard_auth,
-    kubernetes_manifest.strip_prefixes,
-    kubernetes_ingress_class_v1.traefik,
-    null_resource.traefik_crds
-  ]
+  depends_on = [null_resource.apply_traefik_manifests, kubernetes_ingress_class_v1.traefik]
 
-  manifest = {
-    apiVersion = "traefik.io/v1alpha1"
-    kind       = "IngressRoute"
-    metadata = {
-      name      = "main-ingressroute"
-      namespace = kubernetes_namespace_v1.traefik.metadata[0].name
-    }
-    spec = {
-      entryPoints = ["websecure"]
-      routes = [
-        # Dashboard
-        {
-          match = "Host(`avocado.tail799250.ts.net`) && (PathPrefix(`/dashboard`) || PathPrefix(`/api`))"
-          kind  = "Rule"
-          services = [
-            {
-              name      = "traefik"
-              namespace = kubernetes_namespace_v1.traefik.metadata[0].name
-              port      = 8080
-            }
-          ]
-          middlewares = [{ name = "dashboard-auth", namespace = "traefik" }]
-        },
-        # Authentik
-        {
-          match = "Host(`avocado.tail799250.ts.net`) && PathPrefix(`/authentik`)"
-          kind  = "Rule"
-          services = [
-            {
-              name      = "authentik-server"
-              namespace = "authentik"
-              port      = 9000
-            }
-          ]
-          middlewares = [{ name = "strip-prefixes", namespace = "traefik" }]
-        },
-        # Minio S3 API
-        {
-          match = "Host(`avocado.tail799250.ts.net`) && PathPrefix(`/minio`)"
-          kind  = "Rule"
-          services = [
-            {
-              name      = "minio"
-              namespace = "default"
-              port      = 9000
-            }
-          ]
-          middlewares = [{ name = "strip-prefixes", namespace = "traefik" }]
-        },
-        # Minio Console
-        {
-          match = "Host(`avocado.tail799250.ts.net`) && PathPrefix(`/console`)"
-          kind  = "Rule"
-          services = [
-            {
-              name      = "minio"
-              namespace = "default"
-              port      = 9001
-            }
-          ]
-          middlewares = [{ name = "strip-prefixes", namespace = "traefik" }]
-        }
-      ]
-      tls = {
-        secretName = "tailscale-certs"
+  triggers = {
+    dashboard = sha256(jsonencode({
+      apiVersion = "traefik.io/v1alpha1"
+      kind       = "IngressRoute"
+      metadata = {
+        name      = "traefik-dashboard"
+        namespace = kubernetes_namespace_v1.traefik.metadata[0].name
       }
+      spec = {
+        entryPoints = ["websecure"]
+        routes = [{
+          match = "Host(`${var.domain_name}`) && (PathPrefix(`/dashboard`) || PathPrefix(`/api`))"
+          kind  = "Rule"
+          services = [{
+            name      = "traefik"
+            namespace = kubernetes_namespace_v1.traefik.metadata[0].name
+            port      = 8080
+          }]
+          middlewares = [{ name = "dashboard-auth", namespace = "traefik" }]
+        }]
+        tls = {
+          secretName = "tailscale-certs"
+        }
+      }
+    }))
+  }
+
+  provisioner "local-exec" {
+    command = <<-EOT
+      echo "Aplicando IngressRoute traefik-dashboard..."
+      kubectl apply -f - <<EOF
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: traefik-dashboard
+  namespace: ${kubernetes_namespace_v1.traefik.metadata[0].name}
+spec:
+  entryPoints:
+    - websecure
+  routes:
+    - match: Host(`${var.domain_name}`) && (PathPrefix(\`/dashboard\`) || PathPrefix(\`/api\`))
+      kind: Rule
+      services:
+        - name: traefik
+          namespace: ${kubernetes_namespace_v1.traefik.metadata[0].name}
+          port: 8080
+      middlewares:
+        - name: dashboard-auth
+          namespace: traefik
+  tls:
+    secretName: tailscale-certs
+EOF
+    EOT
+
+    environment = {
+      KUBECONFIG = "${path.cwd}/.k3d_kubeconfig"
     }
   }
 }

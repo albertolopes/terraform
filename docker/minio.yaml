@@ -15,7 +15,7 @@ services:
     command: server /data --console-address ":9001"
     restart: unless-stopped
 
-volumes:
+#volumes:
   # Using host directory in ../volume/minio instead of named volume by default.
   # If you want to revert to a Docker named volume, uncomment the block below.
   # minio_data:
