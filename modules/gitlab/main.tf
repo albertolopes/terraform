@@ -61,8 +61,7 @@ resource "kubectl_manifest" "gitlab_minio_secret" {
 
 resource "helm_release" "gitlab" {
   name             = "gitlab"
-  repository       = "https://gitlab-charts.storage.googleapis.com/"
-  chart            = "gitlab"
+  chart            = "${path.module}/gitlab-chart"
   namespace        = kubernetes_namespace_v1.gitlab.metadata[0].name
   timeout          = 600
   create_namespace = false
