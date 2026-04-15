@@ -104,6 +104,13 @@ resource "helm_release" "gitlab" {
       mode: standalone
       auth:
         existingSecret: gitlab-minio-secret
+      resources:
+        requests:
+          memory: 512Mi
+          cpu: 100m
+        limits:
+          memory: 1Gi
+          cpu: 500m
 
     registry:
       enabled: false
@@ -119,6 +126,14 @@ resource "helm_release" "gitlab" {
       auth:
         existingSecret: gitlab-redis-secret
         enabled: true
+      master:
+        resources:
+          requests:
+            memory: 256Mi
+            cpu: 100m
+          limits:
+            memory: 512Mi
+            cpu: 500m
 
     gitlab:
       webservice:
@@ -147,42 +162,67 @@ resource "helm_release" "gitlab" {
         maxReplicas: 1
         resources:
           requests:
-            cpu: 50m
-            memory: 128Mi
+            cpu: 100m
+            memory: 512Mi
           limits:
-            cpu: 200m
-            memory: 256Mi
+            cpu: 1000m
+            memory: 1Gi
+        livenessProbe:
+          initialDelaySeconds: 180
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 5
 
       gitaly:
         resources:
           requests:
-            cpu: 50m
-            memory: 128Mi
-          limits:
-            cpu: 200m
+            cpu: 100m
             memory: 256Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
 
       gitlab-shell:
         minReplicas: 1
         maxReplicas: 1
         resources:
           requests:
-            cpu: 25m
-            memory: 32Mi
+            cpu: 50m
+            memory: 64Mi
+          limits:
+            cpu: 200m
+            memory: 128Mi
 
       kas:
         minReplicas: 1
         maxReplicas: 1
         resources:
           requests:
-            cpu: 25m
-            memory: 32Mi
+            cpu: 50m
+            memory: 64Mi
+          limits:
+            cpu: 200m
+            memory: 128Mi
 
       toolbox:
         enabled: true
+        resources:
+          requests:
+            cpu: 50m
+            memory: 128Mi
+          limits:
+            cpu: 200m
+            memory: 256Mi
 
       migrations:
         enabled: true
+        resources:
+          requests:
+            cpu: 100m
+            memory: 256Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
     YAML
   ]
 
