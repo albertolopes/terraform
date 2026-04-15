@@ -3,7 +3,7 @@
 variable "domain_name" {
   description = "Domínio principal"
   type        = string
-  default     = "avocado.tail799250.ts.net"
+  default     = "tail799250.ts.net"
 }
 
 variable "admin_email" {
