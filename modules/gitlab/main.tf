@@ -213,11 +213,11 @@ resource "helm_release" "gitlab" {
         enabled: true
         resources:
           requests:
-            cpu: 50m
-            memory: 128Mi
+            cpu: 100m
+            memory: 512Mi
           limits:
-            cpu: 200m
-            memory: 256Mi
+            cpu: 800m
+            memory: 1G
 
       migrations:
         enabled: true
