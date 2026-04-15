@@ -61,7 +61,7 @@ resource "kubectl_manifest" "gitlab_minio_secret" {
 
 resource "helm_release" "gitlab" {
   name             = "gitlab"
-  repository       = "https://charts.gitlab.io/"
+  repository       = "https://gitlab-charts.storage.googleapis.com/"
   chart            = "gitlab"
   namespace        = kubernetes_namespace_v1.gitlab.metadata[0].name
   timeout          = 600
@@ -217,7 +217,7 @@ resource "helm_release" "gitlab" {
             memory: 512Mi
           limits:
             cpu: 800m
-            memory: 1G
+            memory: 1Gi
 
       migrations:
         enabled: true
