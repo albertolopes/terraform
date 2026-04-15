@@ -148,14 +148,14 @@ resource "helm_release" "gitlab" {
             memory: 2Gi
         livenessProbe:
           initialDelaySeconds: 300
-          periodSeconds: 10
-          timeoutSeconds: 5
-          failureThreshold: 3
+          periodSeconds: 30
+          timeoutSeconds: 10
+          failureThreshold: 5
         readinessProbe:
           initialDelaySeconds: 240
-          periodSeconds: 5
-          timeoutSeconds: 3
-          failureThreshold: 2
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 5
 
       sidekiq:
         minReplicas: 1
