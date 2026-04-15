@@ -157,21 +157,26 @@ resource "helm_release" "gitlab" {
           timeoutSeconds: 3
           failureThreshold: 2
 
-      sidekiq:
-        minReplicas: 1
-        maxReplicas: 1
-        resources:
-          requests:
-            cpu: 200m
-            memory: 2Gi
-          limits:
-            cpu: 2000m
-            memory: 2Gi
-        livenessProbe:
-          initialDelaySeconds: 180
-          periodSeconds: 10
-          timeoutSeconds: 5
-          failureThreshold: 5
+    sidekiq:
+      minReplicas: 1
+      maxReplicas: 1
+      resources:
+        requests:
+          cpu: 200m
+          memory: 2Gi
+        limits:
+          cpu: 2000m
+          memory: 2Gi
+      livenessProbe:
+        initialDelaySeconds: 300
+        periodSeconds: 30
+        timeoutSeconds: 10
+        failureThreshold: 5
+      readinessProbe:
+        initialDelaySeconds: 60
+        periodSeconds: 10
+        timeoutSeconds: 5
+    failureThreshold: 5
 
       gitaly:
         resources:
