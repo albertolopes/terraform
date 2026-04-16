@@ -139,20 +139,23 @@ resource "helm_release" "gitlab" {
       webservice:
         minReplicas: 1
         maxReplicas: 1
+        env:
+          - name: PUMA_WORKERS
+            value: "1"
         resources:
           requests:
             cpu: 1000m
-            memory: 1Gi
+            memory: 2Gi
           limits:
             cpu: 2000m
-            memory: 3Gi
+            memory: 4Gi
         livenessProbe:
-          initialDelaySeconds: 300
+          initialDelaySeconds: 600
           periodSeconds: 30
           timeoutSeconds: 10
           failureThreshold: 5
         readinessProbe:
-          initialDelaySeconds: 240
+          initialDelaySeconds: 480
           periodSeconds: 10
           timeoutSeconds: 5
           failureThreshold: 5
