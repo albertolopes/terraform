@@ -15,7 +15,7 @@ resource "kubectl_manifest" "gitlab_root_secret" {
       namespace: ${var.namespace}
     type: Opaque
     stringData:
-      password: ${var.root_password != null ? var.root_password : "GitLabRootSenhaForte123!"}
+      password: ${var.root_password != null ? var.root_password : "changeme123"}
   YAML
 }
 
@@ -28,7 +28,7 @@ resource "kubectl_manifest" "gitlab_postgres_secret" {
       namespace: ${var.namespace}
     type: Opaque
     stringData:
-      password: PostgresSenhaForte123!
+      password: postgres
   YAML
 }
 
@@ -41,7 +41,7 @@ resource "kubectl_manifest" "gitlab_redis_secret" {
       namespace: ${var.namespace}
     type: Opaque
     stringData:
-      redis-password: RedisSenhaComplexa456!
+      redis-password: gitlab-redis-password
   YAML
 }
 
@@ -54,8 +54,8 @@ resource "kubectl_manifest" "gitlab_minio_secret" {
       namespace: ${var.namespace}
     type: Opaque
     stringData:
-      accesskey: MinioAccessKeyForte789!
-      secretkey: MinioSecretKeyMuitoForte012!
+      accesskey: minioadmin
+      secretkey: minioadmin123
   YAML
 }
 
