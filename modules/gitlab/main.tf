@@ -15,7 +15,7 @@ resource "kubectl_manifest" "gitlab_root_secret" {
       namespace: ${var.namespace}
     type: Opaque
     stringData:
-      password: ${var.root_password != null ? var.root_password : "changeme123"}
+      password: ${var.root_password != null ? var.root_password : "GitLabRootSenhaForte123!"}
   YAML
 }
 
@@ -28,7 +28,7 @@ resource "kubectl_manifest" "gitlab_postgres_secret" {
       namespace: ${var.namespace}
     type: Opaque
     stringData:
-      password: postgres
+      password: PostgresSenhaForte123!
   YAML
 }
 
@@ -41,7 +41,7 @@ resource "kubectl_manifest" "gitlab_redis_secret" {
       namespace: ${var.namespace}
     type: Opaque
     stringData:
-      redis-password: gitlab-redis-password
+      redis-password: RedisSenhaComplexa456!
   YAML
 }
 
@@ -54,14 +54,15 @@ resource "kubectl_manifest" "gitlab_minio_secret" {
       namespace: ${var.namespace}
     type: Opaque
     stringData:
-      accesskey: minioadmin
-      secretkey: minioadmin123
+      accesskey: MinioAccessKeyForte789!
+      secretkey: MinioSecretKeyMuitoForte012!
   YAML
 }
 
 resource "helm_release" "gitlab" {
   name             = "gitlab"
-  chart            = "${path.module}/gitlab-chart"
+  repository       = "https://charts.gitlab.io/"
+  chart            = "gitlab"
   namespace        = kubernetes_namespace_v1.gitlab.metadata[0].name
   timeout          = 600
   create_namespace = false
