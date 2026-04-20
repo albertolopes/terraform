@@ -29,6 +29,20 @@ module "postgres" {
   depends_on = [module.k3d_cluster]
 }
 
+module "redis" {
+  source = "./modules/redis"
+
+  namespace      = "redis"
+  redis_password = var.redis_password
+
+  providers = {
+    kubernetes = kubernetes
+  }
+
+  depends_on = [module.k3d_cluster]
+}
+
+
 # --- MinIO Object Storage ---
 module "minio" {
   source = "./modules/minio"
@@ -58,5 +72,5 @@ module "gitlab" {
     kubernetes = kubernetes
   }
 
-  depends_on = [module.postgres, module.traefik, module.minio]
+  depends_on = [module.postgres, module.traefik, module.minio, module.redis]
 }

@@ -31,3 +31,10 @@ variable "minio_secret_key" {
   sensitive   = true
   default     = "minioadmin123"
 }
+
+variable "redis_password" {
+  description = "Redis password for GitLab"
+  type        = string
+  sensitive   = true
+  default     = "gitlab-redis-password"
+}

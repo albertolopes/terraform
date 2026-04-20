@@ -155,25 +155,13 @@ resource "helm_release" "gitlab" {
       install: false
 
     redis:
-      install: true
-      auth:
-        existingSecret: gitlab-redis-secret
-        enabled: true
-      image:
-        registry: docker.io
-        repository: bitnami/redis
-        tag: 7.2.5-debian-12-r0
-      master:
-        resources:
-          requests:
-            memory: 512Mi
-            cpu: 200m
-          limits:
-            memory: 1Gi
-            cpu: 1000m
-        persistence:
-          enabled: true
-          size: 8Gi
+    host: redis.redis.svc.cluster.local
+    port: 6379
+    password:
+      secret: redis-password-secret
+      key: redis-password
+    # Desabilitar Redis interno
+    install: false
 
     gitlab:
       webservice:
