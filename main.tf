@@ -30,35 +30,19 @@ module "postgres" {
 }
 
 # --- MinIO Object Storage ---
-resource "kubernetes_secret_v1" "minio_credentials" {
+module "minio" {
+  source = "./modules/minio"
+
+  domain_name      = var.domain_name
+  minio_access_key = var.minio_access_key
+  minio_secret_key = var.minio_secret_key
+
+  providers = {
+    helm       = helm
+    kubernetes = kubernetes
+  }
+
   depends_on = [module.k3d_cluster]
-
-  metadata {
-    name      = "minio-credentials"
-    namespace = "default"
-  }
-
-  data = {
-    rootUser     = base64encode(var.minio_access_key)
-    rootPassword = base64encode(var.minio_secret_key)
-  }
-}
-
-resource "helm_release" "minio" {
-  depends_on      = [kubernetes_secret_v1.minio_credentials, module.k3d_cluster]
-  name            = "minio"
-  repository      = "https://charts.bitnami.com/bitnami"
-  chart           = "minio"
-  namespace       = "default"
-  cleanup_on_fail = true
-  wait            = true
-  timeout         = 600
-
-  values = [
-    templatefile("${path.module}/values.yaml", {
-      domain_name = var.domain_name
-    })
-  ]
 }
 
 # --- GitLab ---
@@ -75,5 +59,5 @@ module "gitlab" {
     kubernetes = kubernetes
   }
 
-  depends_on = [module.postgres, module.traefik, helm_release.minio]
+  depends_on = [module.postgres, module.traefik, module.minio]
 }
