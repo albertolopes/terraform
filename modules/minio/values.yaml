@@ -17,10 +17,6 @@ ingress:
   hostname: minio.${domain_name}
   path: /
 
-extraEnvVars:
-  - name: MINIO_BROWSER_REDIRECT_URL
-    value: https://minio.${domain_name}
-
 resources:
   requests:
     memory: 256Mi
