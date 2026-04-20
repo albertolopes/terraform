@@ -163,6 +163,10 @@ resource "helm_release" "gitlab" {
       auth:
         existingSecret: gitlab-redis-secret
         enabled: true
+      image:
+        registry: docker.io
+        repository: bitnami/redis
+        tag: 7.2.5-debian-12-r0
       master:
         resources:
           requests:
