@@ -105,7 +105,6 @@ resource "helm_release" "gitlab" {
         password:
           secret: redis-password-secret
           key: redis-password
-        install: false
       appConfig:
         lfs:
           enabled: true
@@ -146,6 +145,9 @@ resource "helm_release" "gitlab" {
       enabled: false
 
     postgresql:
+      install: false
+
+    redis:
       install: false
 
     gitlab:

@@ -46,17 +46,17 @@ locals {
 }
 
 provider "kubernetes" {
-  config_path = fileexists(local.kubeconfig_path) ? local.kubeconfig_path : null
+  config_path = local.kubeconfig_path
 }
 
 provider "helm" {
   kubernetes {
-    config_path = fileexists(local.kubeconfig_path) ? local.kubeconfig_path : null
+    config_path = local.kubeconfig_path
   }
 }
 
 provider "kubectl" {
-  config_path = fileexists(local.kubeconfig_path) ? local.kubeconfig_path : null
+  config_path = local.kubeconfig_path
 }
 
 provider "docker" {}
