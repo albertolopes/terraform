@@ -44,6 +44,8 @@ resource "kubernetes_persistent_volume_claim_v1" "redis" {
       }
     }
   }
+
+  wait_until_bound = false # Resolve o deadlock do WaitForFirstConsumer
 }
 
 

@@ -129,6 +129,7 @@ resource "kubernetes_persistent_volume_claim_v1" "authentik_pg" {
       }
     }
   }
+  wait_until_bound = false
 }
 
 # --- Redis ---
@@ -203,6 +204,7 @@ resource "kubernetes_persistent_volume_claim_v1" "authentik_redis" {
       }
     }
   }
+  wait_until_bound = false
 }
 
 # --- Authentik Server ---
