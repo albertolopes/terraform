@@ -1,16 +1,5 @@
 # modules/gitlab/main.tf
 
-terraform {
-  required_providers {
-    kubernetes = {
-      source  = "hashicorp/kubernetes"
-    }
-    helm = {
-      source  = "hashicorp/helm"
-    }
-  }
-}
-
 resource "kubernetes_namespace_v1" "gitlab" {
   metadata {
     name = var.namespace
