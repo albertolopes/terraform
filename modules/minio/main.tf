@@ -24,7 +24,7 @@ resource "kubernetes_secret_v1" "minio_credentials" {
   }
 }
 
-# Deployment do MinIO
+# Deployment do MinIO com hostPath
 resource "kubernetes_deployment_v1" "minio" {
   depends_on = [kubernetes_secret_v1.minio_credentials]
 
@@ -96,27 +96,11 @@ resource "kubernetes_deployment_v1" "minio" {
 
         volume {
           name = "data"
-          persistent_volume_claim {
-            claim_name = kubernetes_persistent_volume_claim_v1.minio.metadata[0].name
+          host_path {
+            path = "/tmp/minio-data"
+            type = "DirectoryOrCreate"
           }
         }
-      }
-    }
-  }
-}
-
-# PVC para armazenamento
-resource "kubernetes_persistent_volume_claim_v1" "minio" {
-  metadata {
-    name      = "minio-pvc"
-    namespace = kubernetes_namespace_v1.minio.metadata[0].name
-  }
-
-  spec {
-    access_modes = ["ReadWriteOnce"]
-    resources {
-      requests = {
-        storage = "10Gi"
       }
     }
   }
@@ -179,7 +163,7 @@ resource "kubernetes_ingress_v1" "minio" {
   }
 }
 
-# Criar buckets usando um pod init
+# Criar buckets usando um pod job
 resource "kubernetes_job_v1" "create_buckets" {
   depends_on = [kubernetes_deployment_v1.minio]
 
@@ -201,6 +185,8 @@ resource "kubernetes_job_v1" "create_buckets" {
           command = ["sh", "-c"]
           args = [
             <<-EOT
+            echo "Waiting for MinIO to be ready..."
+            sleep 10
             mc alias set myminio http://minio:9000 ${var.minio_access_key} ${var.minio_secret_key}
             mc mb myminio/terraform-state --ignore-existing
             mc mb myminio/gitlab-lfs --ignore-existing

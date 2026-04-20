@@ -43,6 +43,7 @@ module "minio" {
 
   depends_on = [module.k3d_cluster]
 }
+
 # --- GitLab ---
 module "gitlab" {
   source = "./modules/gitlab"
