@@ -55,6 +55,20 @@ resource "kubernetes_secret_v1" "gitlab_postgres_secret" {
   }
 }
 
+resource "kubernetes_secret_v1" "gitlab_redis_secret" {
+  metadata {
+    name      = "gitlab-redis-secret"
+    namespace = var.namespace
+  }
+
+  type = "Opaque"
+
+  data = {
+    "redis-password" = base64encode("gitlab-redis-password")
+  }
+}
+
+
 resource "helm_release" "gitlab" {
   name             = "gitlab"
   chart            = "${path.module}/charts/gitlab"  # Chart local
@@ -103,7 +117,7 @@ resource "helm_release" "gitlab" {
         host: redis.redis.svc.cluster.local
         port: 6379
         password:
-          secret: redis-password-secret
+          secret: gitlab-redis-secret
           key: redis-password
       appConfig:
         lfs:
@@ -275,6 +289,7 @@ resource "helm_release" "gitlab" {
     kubernetes_namespace_v1.gitlab,
     kubernetes_secret_v1.gitlab_root_secret,
     kubernetes_secret_v1.gitlab_postgres_secret,
+    kubernetes_secret_v1.gitlab_redis_secret,
     kubernetes_secret_v1.gitlab_minio_secret,
   ]
 }

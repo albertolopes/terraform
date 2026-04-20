@@ -29,6 +29,23 @@ resource "kubernetes_secret_v1" "redis_password" {
   }
 }
 
+# PVC para armazenamento persistente - MOVIDO PARA CIMA
+resource "kubernetes_persistent_volume_claim_v1" "redis" {
+  metadata {
+    name      = "redis-pvc"
+    namespace = kubernetes_namespace_v1.redis.metadata[0].name
+  }
+
+  spec {
+    access_modes = ["ReadWriteOnce"]
+    resources {
+      requests = {
+        storage = var.storage_size
+      }
+    }
+  }
+}
+
 # Deployment do Redis
 resource "kubernetes_deployment_v1" "redis" {
   metadata {
@@ -58,7 +75,7 @@ resource "kubernetes_deployment_v1" "redis" {
       spec {
         container {
           name  = "redis"
-          image = "redis:7.2-alpine"
+          image = "docker.io/bitnami/redis:7.2.5-debian-12-r0"
 
           port {
             container_port = 6379
@@ -75,12 +92,10 @@ resource "kubernetes_deployment_v1" "redis" {
             }
           }
 
-          args = [
-            "--requirepass",
-            "$(REDIS_PASSWORD)",
-            "--appendonly",
-            "yes"
-          ]
+          # A imagem da Bitnami espera que a senha seja passada como environment variable
+          # ou que o arquivo auth seja configurado. Como REDIS_PASSWORD foi adicionado
+          # o script entrypoint da Bitnami irá usá-la. Removemos os args pois podem
+          # sobrepor o entrypoint da imagem
 
           resources {
             requests = {
@@ -95,7 +110,7 @@ resource "kubernetes_deployment_v1" "redis" {
 
           volume_mount {
             name       = "redis-data"
-            mount_path = "/data"
+            mount_path = "/bitnami/redis/data"
           }
 
           liveness_probe {
@@ -125,23 +140,6 @@ resource "kubernetes_deployment_v1" "redis" {
             claim_name = kubernetes_persistent_volume_claim_v1.redis.metadata[0].name
           }
         }
-      }
-    }
-  }
-}
-
-# PVC para armazenamento persistente
-resource "kubernetes_persistent_volume_claim_v1" "redis" {
-  metadata {
-    name      = "redis-pvc"
-    namespace = kubernetes_namespace_v1.redis.metadata[0].name
-  }
-
-  spec {
-    access_modes = ["ReadWriteOnce"]
-    resources {
-      requests = {
-        storage = var.storage_size
       }
     }
   }
