@@ -6,72 +6,65 @@ resource "kubernetes_namespace_v1" "gitlab" {
   }
 }
 
-# Usar kubernetes_manifest em vez de kubectl_manifest
-resource "kubernetes_manifest" "gitlab_minio_secret" {
-  manifest = {
-    apiVersion = "v1"
-    kind = "Secret"
-    metadata = {
-      name = "gitlab-minio-secret"
-      namespace = var.namespace
-    }
-    type = "Opaque"
-    stringData = {
-      connection = <<-EOT
-        [default]
-        host = minio.default.svc.cluster.local:9000
-        access_key = ${var.minio_access_key}
-        secret_key = ${var.minio_secret_key}
-        use_ssl = false
-      EOT
-      accesskey = var.minio_access_key
-      secretkey = var.minio_secret_key
-    }
+# Usar kubernetes_secret_v1 em vez de kubernetes_manifest
+resource "kubernetes_secret_v1" "gitlab_minio_secret" {
+  metadata {
+    name      = "gitlab-minio-secret"
+    namespace = var.namespace
+  }
+
+  type = "Opaque"
+
+  data = {
+    "connection" = base64encode(<<-EOT
+[default]
+host = minio.minio.svc.cluster.local:9000
+access_key = ${var.minio_access_key}
+secret_key = ${var.minio_secret_key}
+use_ssl = false
+EOT
+    )
+    "accesskey" = base64encode(var.minio_access_key)
+    "secretkey" = base64encode(var.minio_secret_key)
   }
 }
 
-resource "kubernetes_manifest" "gitlab_root_secret" {
-  manifest = {
-    apiVersion = "v1"
-    kind = "Secret"
-    metadata = {
-      name = "gitlab-root-secret"
-      namespace = var.namespace
-    }
-    type = "Opaque"
-    stringData = {
-      password = var.root_password != null ? var.root_password : "changeme123"
-    }
+resource "kubernetes_secret_v1" "gitlab_root_secret" {
+  metadata {
+    name      = "gitlab-root-secret"
+    namespace = var.namespace
+  }
+
+  type = "Opaque"
+
+  data = {
+    "password" = base64encode(var.root_password != null ? var.root_password : "changeme123")
   }
 }
 
-resource "kubernetes_manifest" "gitlab_postgres_secret" {
-  manifest = {
-    apiVersion = "v1"
-    kind = "Secret"
-    metadata = {
-      name = "gitlab-postgres-secret"
-      namespace = var.namespace
-    }
-    type = "Opaque"
-    stringData = {
-      password = "postgres"
-    }
+resource "kubernetes_secret_v1" "gitlab_postgres_secret" {
+  metadata {
+    name      = "gitlab-postgres-secret"
+    namespace = var.namespace
+  }
+
+  type = "Opaque"
+
+  data = {
+    "password" = base64encode("postgres")
   }
 }
 
-resource "kubernetes_manifest" "gitlab_redis_secret" {
-  manifest = {
-    apiVersion = "v1"
-    kind = "Secret"
-    metadata = {
-      name = "gitlab-redis-secret"
-      namespace = var.namespace
-    }
-    type = "Opaque"
-    stringData = {
-      redis-password = "gitlab-redis-password"
-    }
+resource "kubernetes_secret_v1" "gitlab_redis_secret" {
+  metadata {
+    name      = "gitlab-redis-secret"
+    namespace = var.namespace
+  }
+
+  type = "Opaque"
+
+  data = {
+    "redis-password" = base64encode("gitlab-redis-password")
   }
 }
 
@@ -97,7 +90,7 @@ resource "helm_release" "gitlab" {
         domain: ${var.domain_name}
         https: false
         gitlab:
-          name: gitlab.${var.domain_name}
+          name: ${var.domain_name}
       ingress:
         enabled: true
         class: traefik
@@ -173,11 +166,11 @@ resource "helm_release" "gitlab" {
       master:
         resources:
           requests:
-            memory: 256Mi
-            cpu: 100m
-          limits:
             memory: 512Mi
-            cpu: 500m
+            cpu: 200m
+          limits:
+            memory: 1Gi
+            cpu: 1000m
         persistence:
           enabled: true
           size: 8Gi
@@ -186,21 +179,21 @@ resource "helm_release" "gitlab" {
       webservice:
         enabled: true
         minReplicas: 1
-        maxReplicas: 1
+        maxReplicas: 2
         hpa:
           enabled: false
         env:
           - name: PUMA_WORKERS
-            value: "1"
+            value: "2"
           - name: GITLAB_RAILS_RACK_TIMEOUT
             value: "600"
         resources:
           requests:
-            cpu: 500m
-            memory: 1Gi
-          limits:
-            cpu: 2000m
+            cpu: 1000m
             memory: 2Gi
+          limits:
+            cpu: 4000m
+            memory: 4Gi
         livenessProbe:
           initialDelaySeconds: 600
           periodSeconds: 30
@@ -211,7 +204,7 @@ resource "helm_release" "gitlab" {
           periodSeconds: 10
           timeoutSeconds: 5
           failureThreshold: 15
-        workerProcesses: 1
+        workerProcesses: 2
         persistence:
           enabled: false
         objectStorage:
@@ -223,14 +216,14 @@ resource "helm_release" "gitlab" {
       sidekiq:
         enabled: true
         minReplicas: 1
-        maxReplicas: 1
+        maxReplicas: 2
         resources:
           requests:
-            cpu: 500m
-            memory: 1Gi
-          limits:
-            cpu: 2000m
+            cpu: 1000m
             memory: 2Gi
+          limits:
+            cpu: 4000m
+            memory: 4Gi
         livenessProbe:
           initialDelaySeconds: 600
           periodSeconds: 30
@@ -246,40 +239,40 @@ resource "helm_release" "gitlab" {
         enabled: true
         resources:
           requests:
-            cpu: 200m
-            memory: 512Mi
-          limits:
-            cpu: 1000m
+            cpu: 500m
             memory: 1Gi
+          limits:
+            cpu: 2000m
+            memory: 2Gi
         persistence:
           enabled: true
-          size: 20Gi
+          size: 50Gi
         service:
           port: 8075
 
       gitlab-shell:
         enabled: true
         minReplicas: 1
-        maxReplicas: 1
+        maxReplicas: 2
         resources:
           requests:
-            cpu: 50m
-            memory: 64Mi
-          limits:
-            cpu: 200m
+            cpu: 100m
             memory: 128Mi
+          limits:
+            cpu: 500m
+            memory: 256Mi
 
       kas:
         enabled: true
         minReplicas: 1
-        maxReplicas: 1
+        maxReplicas: 2
         resources:
           requests:
-            cpu: 50m
-            memory: 64Mi
-          limits:
-            cpu: 200m
+            cpu: 100m
             memory: 128Mi
+          limits:
+            cpu: 500m
+            memory: 256Mi
         service:
           externalPort: 8150
           internalPort: 8153
@@ -288,11 +281,11 @@ resource "helm_release" "gitlab" {
         enabled: true
         resources:
           requests:
-            cpu: 200m
-            memory: 512Mi
-          limits:
-            cpu: 800m
+            cpu: 500m
             memory: 1Gi
+          limits:
+            cpu: 2000m
+            memory: 2Gi
         backups:
           cron:
             enabled: false
@@ -301,20 +294,14 @@ resource "helm_release" "gitlab" {
         enabled: true
         resources:
           requests:
-            cpu: 200m
-            memory: 512Mi
-          limits:
-            cpu: 1000m
+            cpu: 500m
             memory: 1Gi
+          limits:
+            cpu: 2000m
+            memory: 2Gi
 
       praefect:
         enabled: false
-
-      initialBuckets:
-        - gitlab-lfs
-        - gitlab-artifacts
-        - gitlab-uploads
-        - gitlab-packages
 
     nginx:
       enabled: false
@@ -326,20 +313,20 @@ resource "helm_release" "gitlab" {
 
   depends_on = [
     kubernetes_namespace_v1.gitlab,
-    kubernetes_manifest.gitlab_root_secret,
-    kubernetes_manifest.gitlab_postgres_secret,
-    kubernetes_manifest.gitlab_redis_secret,
-    kubernetes_manifest.gitlab_minio_secret,
+    kubernetes_secret_v1.gitlab_root_secret,
+    kubernetes_secret_v1.gitlab_postgres_secret,
+    kubernetes_secret_v1.gitlab_redis_secret,
+    kubernetes_secret_v1.gitlab_minio_secret,
   ]
 }
 
 # Outputs
 output "gitlab_url" {
-  value = "http://gitlab.${var.domain_name}"
+  value = "http://${var.domain_name}"
 }
 
 output "gitlab_status_command" {
-  value = "kubectl get pods -n ${var.namespace}"
+  value = "kubectl get pods -n ${var.namespace} -w"
 }
 
 output "gitlab_logs_command" {
