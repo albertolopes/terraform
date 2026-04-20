@@ -18,3 +18,16 @@ variable "gitlab_root_password" {
   sensitive   = true
   default     = "changeme123"
 }
+
+variable "minio_access_key" {
+  description = "Access key do MinIO"
+  type        = string
+  default     = "minioadmin"
+}
+
+variable "minio_secret_key" {
+  description = "Secret key do MinIO"
+  type        = string
+  sensitive   = true
+  default     = "minioadmin123"
+}

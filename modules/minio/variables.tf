@@ -1,3 +1,4 @@
+
 # modules/gitlab/variables.tf
 
 variable "namespace" {
@@ -7,7 +8,7 @@ variable "namespace" {
 }
 
 variable "domain_name" {
-  description = "Domain name for GitLab access"
+  description = "Base domain name for GitLab access"
   type        = string
 }
 
@@ -30,15 +31,14 @@ variable "chart_version" {
   default     = "8.4.0"
 }
 
+# Referência ao MinIO existente
 variable "minio_access_key" {
   description = "MinIO access key"
   type        = string
-  default     = "minioadmin"
 }
 
 variable "minio_secret_key" {
   description = "MinIO secret key"
   type        = string
   sensitive   = true
-  default     = "minioadmin123"
 }

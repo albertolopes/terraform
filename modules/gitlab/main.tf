@@ -1,17 +1,15 @@
-# modules/gitlab/variables.tf
-variable "gitlab_version" {
-  description = "GitLab version to install"
-  type        = string
-  default     = "17.9.0"
-}
-
-variable "chart_version" {
-  description = "GitLab Helm chart version"
-  type        = string
-  default     = "8.4.0"
-}
-
 # modules/gitlab/main.tf
+
+terraform {
+  required_providers {
+    kubernetes = {
+      source  = "hashicorp/kubernetes"
+    }
+    helm = {
+      source  = "hashicorp/helm"
+    }
+  }
+}
 
 resource "kubernetes_namespace_v1" "gitlab" {
   metadata {
@@ -19,57 +17,73 @@ resource "kubernetes_namespace_v1" "gitlab" {
   }
 }
 
-resource "kubectl_manifest" "gitlab_root_secret" {
-  yaml_body = <<-YAML
-    apiVersion: v1
-    kind: Secret
-    metadata:
-      name: gitlab-root-secret
-      namespace: ${var.namespace}
-    type: Opaque
-    stringData:
-      password: ${var.root_password != null ? var.root_password : "changeme123"}
-  YAML
+# Usar kubernetes_manifest em vez de kubectl_manifest
+resource "kubernetes_manifest" "gitlab_minio_secret" {
+  manifest = {
+    apiVersion = "v1"
+    kind = "Secret"
+    metadata = {
+      name = "gitlab-minio-secret"
+      namespace = var.namespace
+    }
+    type = "Opaque"
+    stringData = {
+      connection = <<-EOT
+        [default]
+        host = minio.default.svc.cluster.local:9000
+        access_key = ${var.minio_access_key}
+        secret_key = ${var.minio_secret_key}
+        use_ssl = false
+      EOT
+      accesskey = var.minio_access_key
+      secretkey = var.minio_secret_key
+    }
+  }
 }
 
-resource "kubectl_manifest" "gitlab_postgres_secret" {
-  yaml_body = <<-YAML
-    apiVersion: v1
-    kind: Secret
-    metadata:
-      name: gitlab-postgres-secret
-      namespace: ${var.namespace}
-    type: Opaque
-    stringData:
-      password: postgres
-  YAML
+resource "kubernetes_manifest" "gitlab_root_secret" {
+  manifest = {
+    apiVersion = "v1"
+    kind = "Secret"
+    metadata = {
+      name = "gitlab-root-secret"
+      namespace = var.namespace
+    }
+    type = "Opaque"
+    stringData = {
+      password = var.root_password != null ? var.root_password : "changeme123"
+    }
+  }
 }
 
-resource "kubectl_manifest" "gitlab_redis_secret" {
-  yaml_body = <<-YAML
-    apiVersion: v1
-    kind: Secret
-    metadata:
-      name: gitlab-redis-secret
-      namespace: ${var.namespace}
-    type: Opaque
-    stringData:
-      redis-password: gitlab-redis-password
-  YAML
+resource "kubernetes_manifest" "gitlab_postgres_secret" {
+  manifest = {
+    apiVersion = "v1"
+    kind = "Secret"
+    metadata = {
+      name = "gitlab-postgres-secret"
+      namespace = var.namespace
+    }
+    type = "Opaque"
+    stringData = {
+      password = "postgres"
+    }
+  }
 }
 
-resource "kubectl_manifest" "gitlab_minio_secret" {
-  yaml_body = <<-YAML
-    apiVersion: v1
-    kind: Secret
-    metadata:
-      name: gitlab-minio-secret
-      namespace: ${var.namespace}
-    type: Opaque
-    stringData:
-      accesskey: minioadmin
-      secretkey: minioadmin123
-  YAML
+resource "kubernetes_manifest" "gitlab_redis_secret" {
+  manifest = {
+    apiVersion = "v1"
+    kind = "Secret"
+    metadata = {
+      name = "gitlab-redis-secret"
+      namespace = var.namespace
+    }
+    type = "Opaque"
+    stringData = {
+      redis-password = "gitlab-redis-password"
+    }
+  }
 }
 
 resource "helm_release" "gitlab" {
@@ -78,12 +92,13 @@ resource "helm_release" "gitlab" {
   chart            = "gitlab"
   version          = var.chart_version
   namespace        = kubernetes_namespace_v1.gitlab.metadata[0].name
-  timeout          = 1200
+  timeout          = 1800
   create_namespace = false
   wait             = true
   wait_for_jobs    = true
   atomic           = true
   cleanup_on_fail  = true
+  max_history      = 3
 
   values = [
     <<-YAML
@@ -104,7 +119,7 @@ resource "helm_release" "gitlab" {
         secret: gitlab-root-secret
       psql:
         host: postgres.postgres.svc.cluster.local
-        port: 5433
+        port: 5432
         username: postgres
         password:
           secret: gitlab-postgres-secret
@@ -113,17 +128,31 @@ resource "helm_release" "gitlab" {
       image:
         tag: ${var.gitlab_version}
         pullPolicy: IfNotPresent
+      minio:
+        enabled: false
       appConfig:
         lfs:
           enabled: true
+          bucket: gitlab-lfs
         artifacts:
           enabled: true
+          bucket: gitlab-artifacts
         packages:
           enabled: true
+          bucket: gitlab-packages
+        uploads:
+          enabled: true
+          bucket: gitlab-uploads
         containerRegistry:
           enabled: false
         pseudonymizer:
           enabled: false
+        object_store:
+          enabled: true
+          proxy_download: true
+          connection:
+            secret: gitlab-minio-secret
+            key: connection
 
     certmanager:
       install: false
@@ -135,25 +164,8 @@ resource "helm_release" "gitlab" {
       install: false
 
     minio:
-      install: true
-      mode: standalone
-      auth:
-        existingSecret: gitlab-minio-secret
-      defaultBuckets:
-        - gitlab-lfs
-        - gitlab-artifacts
-        - gitlab-uploads
-        - gitlab-packages
-      resources:
-        requests:
-          memory: 256Mi
-          cpu: 100m
-        limits:
-          memory: 512Mi
-          cpu: 500m
-      persistence:
-        enabled: true
-        size: 10Gi
+      install: false
+      enabled: false
 
     registry:
       enabled: false
@@ -179,13 +191,13 @@ resource "helm_release" "gitlab" {
             cpu: 500m
         persistence:
           enabled: true
-          size: 5Gi
+          size: 8Gi
 
     gitlab:
       webservice:
         enabled: true
         minReplicas: 1
-        maxReplicas: 2
+        maxReplicas: 1
         hpa:
           enabled: false
         env:
@@ -204,17 +216,20 @@ resource "helm_release" "gitlab" {
           initialDelaySeconds: 600
           periodSeconds: 30
           timeoutSeconds: 10
-          failureThreshold: 10
-          successThreshold: 1
+          failureThreshold: 15
         readinessProbe:
           initialDelaySeconds: 300
           periodSeconds: 10
           timeoutSeconds: 5
-          failureThreshold: 10
-          successThreshold: 1
+          failureThreshold: 15
         workerProcesses: 1
         persistence:
           enabled: false
+        objectStorage:
+          enabled: true
+          config:
+            secret: gitlab-minio-secret
+            key: connection
 
       sidekiq:
         enabled: true
@@ -231,12 +246,12 @@ resource "helm_release" "gitlab" {
           initialDelaySeconds: 600
           periodSeconds: 30
           timeoutSeconds: 10
-          failureThreshold: 10
+          failureThreshold: 15
         readinessProbe:
           initialDelaySeconds: 300
           periodSeconds: 10
           timeoutSeconds: 5
-          failureThreshold: 10
+          failureThreshold: 15
 
       gitaly:
         enabled: true
@@ -249,11 +264,9 @@ resource "helm_release" "gitlab" {
             memory: 1Gi
         persistence:
           enabled: true
-          size: 10Gi
+          size: 20Gi
         service:
           port: 8075
-        auth:
-          token: gitlab-gitaly-token
 
       gitlab-shell:
         enabled: true
@@ -308,91 +321,38 @@ resource "helm_release" "gitlab" {
       praefect:
         enabled: false
 
-      redis:
-        cache:
-          enabled: true
-          host: gitlab-redis-master.${var.namespace}.svc.cluster.local
-          port: 6379
-          password:
-            secret: gitlab-redis-secret
-            key: redis-password
-        queues:
-          enabled: true
-          host: gitlab-redis-master.${var.namespace}.svc.cluster.local
-          port: 6379
-          password:
-            secret: gitlab-redis-secret
-            key: redis-password
-        sharedState:
-          enabled: true
-          host: gitlab-redis-master.${var.namespace}.svc.cluster.local
-          port: 6379
-          password:
-            secret: gitlab-redis-secret
-            key: redis-password
-
-      objectStorage:
-        enabled: true
-        config:
-          secret: gitlab-minio-secret
-          key:
-            accesskey: accesskey
-            secretkey: secretkey
-        artifacts:
-          bucket: gitlab-artifacts
-        lfs:
-          bucket: gitlab-lfs
-        uploads:
-          bucket: gitlab-uploads
-        packages:
-          bucket: gitlab-packages
-        external:
-          endpoint: http://gitlab-minio-svc.${var.namespace}.svc.cluster.local:9000
+      initialBuckets:
+        - gitlab-lfs
+        - gitlab-artifacts
+        - gitlab-uploads
+        - gitlab-packages
 
     nginx:
       enabled: false
 
     gitlab-exporter:
-      enabled: true
-      resources:
-        requests:
-          cpu: 50m
-          memory: 128Mi
-        limits:
-          cpu: 200m
-          memory: 256Mi
+      enabled: false
     YAML
   ]
 
   depends_on = [
     kubernetes_namespace_v1.gitlab,
-    kubectl_manifest.gitlab_root_secret,
-    kubectl_manifest.gitlab_postgres_secret,
-    kubectl_manifest.gitlab_redis_secret,
-    kubectl_manifest.gitlab_minio_secret
+    kubernetes_manifest.gitlab_root_secret,
+    kubernetes_manifest.gitlab_postgres_secret,
+    kubernetes_manifest.gitlab_redis_secret,
+    kubernetes_manifest.gitlab_minio_secret,
   ]
 }
 
 # Outputs
-output "gitlab_access_info" {
-  value = <<-EOT
-    GitLab has been deployed successfully!
-
-    URL: http://gitlab.${var.domain_name}
-    Username: root
-    Password: ${var.root_password != null ? var.root_password : "changeme123"}
-
-    Monitor deployment:
-    kubectl get pods -n ${var.namespace}
-    kubectl logs -n ${var.namespace} -l app=webservice --tail=100
-  EOT
-  sensitive = true
-}
-
 output "gitlab_url" {
   value = "http://gitlab.${var.domain_name}"
 }
 
 output "gitlab_status_command" {
   value = "kubectl get pods -n ${var.namespace}"
+}
+
+output "gitlab_logs_command" {
+  value = "kubectl logs -n ${var.namespace} -l app=webservice --tail=100"
 }
