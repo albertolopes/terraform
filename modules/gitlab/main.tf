@@ -110,8 +110,12 @@ resource "helm_release" "gitlab" {
       image:
         tag: ${var.gitlab_version}
         pullPolicy: IfNotPresent
+      # MinIO movido para global
       minio:
         enabled: false
+      # Gitaly movido para global
+      gitaly:
+        enabled: true
       appConfig:
         lfs:
           enabled: true
@@ -144,10 +148,6 @@ resource "helm_release" "gitlab" {
 
     gitlab-runner:
       install: false
-
-    minio:
-      install: false
-      enabled: false
 
     registry:
       enabled: false
@@ -234,21 +234,6 @@ resource "helm_release" "gitlab" {
           periodSeconds: 10
           timeoutSeconds: 5
           failureThreshold: 15
-
-      gitaly:
-        enabled: true
-        resources:
-          requests:
-            cpu: 500m
-            memory: 1Gi
-          limits:
-            cpu: 2000m
-            memory: 2Gi
-        persistence:
-          enabled: true
-          size: 50Gi
-        service:
-          port: 8075
 
       gitlab-shell:
         enabled: true
