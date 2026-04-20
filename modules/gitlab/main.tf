@@ -70,9 +70,7 @@ resource "kubernetes_secret_v1" "gitlab_redis_secret" {
 
 resource "helm_release" "gitlab" {
   name             = "gitlab"
-  repository       = "https://charts.gitlab.io/"
-  chart            = "gitlab"
-  version          = var.chart_version
+  chart            = "${path.module}/charts/gitlab"  # Chart local
   namespace        = kubernetes_namespace_v1.gitlab.metadata[0].name
   timeout          = 1800
   create_namespace = false
@@ -110,10 +108,8 @@ resource "helm_release" "gitlab" {
       image:
         tag: ${var.gitlab_version}
         pullPolicy: IfNotPresent
-      # MinIO movido para global
       minio:
         enabled: false
-      # Gitaly movido para global
       gitaly:
         enabled: true
       appConfig:
