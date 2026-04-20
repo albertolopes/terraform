@@ -16,16 +16,15 @@ resource "kubernetes_secret_v1" "gitlab_minio_secret" {
   type = "Opaque"
 
   data = {
-    "connection" = base64encode(<<-EOT
+    "connection" = <<-EOT
 [default]
 host = minio.minio.svc.cluster.local:9000
 access_key = ${var.minio_access_key}
 secret_key = ${var.minio_secret_key}
 use_ssl = false
 EOT
-    )
-    "accesskey" = base64encode(var.minio_access_key)
-    "secretkey" = base64encode(var.minio_secret_key)
+    "accesskey"  = var.minio_access_key
+    "secretkey"  = var.minio_secret_key
   }
 }
 
@@ -38,7 +37,7 @@ resource "kubernetes_secret_v1" "gitlab_root_secret" {
   type = "Opaque"
 
   data = {
-    "password" = base64encode(var.root_password != null ? var.root_password : "changeme123")
+    "password" = var.root_password != null ? var.root_password : "changeme123"
   }
 }
 
@@ -51,7 +50,8 @@ resource "kubernetes_secret_v1" "gitlab_postgres_secret" {
   type = "Opaque"
 
   data = {
-    "password" = base64encode("postgres")
+    # Em modules/postgres/main.tf o banco é inicializado com a senha "postgres" no init.sql
+    "password" = "postgres"
   }
 }
 
@@ -64,7 +64,8 @@ resource "kubernetes_secret_v1" "gitlab_redis_secret" {
   type = "Opaque"
 
   data = {
-    "redis-password" = base64encode("gitlab-redis-password")
+    # Aqui usamos o valor da variável recebida do main.tf
+    "redis-password" = var.redis_password
   }
 }
 
@@ -100,7 +101,7 @@ resource "helm_release" "gitlab" {
         secret: gitlab-root-secret
       psql:
         host: postgres.postgres.svc.cluster.local
-        port: 5432
+        port: 5433
         username: postgres
         password:
           secret: gitlab-postgres-secret
