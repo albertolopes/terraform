@@ -38,13 +38,11 @@ module "minio" {
   minio_secret_key = var.minio_secret_key
 
   providers = {
-    helm       = helm
     kubernetes = kubernetes
   }
 
   depends_on = [module.k3d_cluster]
 }
-
 # --- GitLab ---
 module "gitlab" {
   source = "./modules/gitlab"

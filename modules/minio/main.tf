@@ -3,16 +3,19 @@ terraform {
     kubernetes = {
       source = "hashicorp/kubernetes"
     }
-    helm = {
-      source = "hashicorp/helm"
-    }
+  }
+}
+
+resource "kubernetes_namespace_v1" "minio" {
+  metadata {
+    name = "minio"
   }
 }
 
 resource "kubernetes_secret_v1" "minio_credentials" {
   metadata {
     name      = "minio-credentials"
-    namespace = "default"
+    namespace = kubernetes_namespace_v1.minio.metadata[0].name
   }
 
   data = {
@@ -21,24 +24,203 @@ resource "kubernetes_secret_v1" "minio_credentials" {
   }
 }
 
-resource "helm_release" "minio" {
-  depends_on      = [kubernetes_secret_v1.minio_credentials]
-  name            = "minio"
-  repository      = "https://charts.bitnami.com/bitnami"
-  chart           = "minio"
-  version         = "14.7.6"
-  namespace       = "default"
-  cleanup_on_fail = true
-  wait            = true
-  timeout         = 600
+# Deployment do MinIO
+resource "kubernetes_deployment_v1" "minio" {
+  depends_on = [kubernetes_secret_v1.minio_credentials]
 
-  values = [
-    templatefile("${path.module}/values.yaml", {
-      domain_name = var.domain_name
-    })
-  ]
+  metadata {
+    name      = "minio"
+    namespace = kubernetes_namespace_v1.minio.metadata[0].name
+    labels = {
+      app = "minio"
+    }
+  }
+
+  spec {
+    replicas = 1
+
+    selector {
+      match_labels = {
+        app = "minio"
+      }
+    }
+
+    template {
+      metadata {
+        labels = {
+          app = "minio"
+        }
+      }
+
+      spec {
+        container {
+          name  = "minio"
+          image = "minio/minio:latest"
+          args  = ["server", "/data", "--console-address", ":9001"]
+
+          port {
+            container_port = 9000
+            name           = "api"
+          }
+
+          port {
+            container_port = 9001
+            name           = "console"
+          }
+
+          env {
+            name = "MINIO_ROOT_USER"
+            value_from {
+              secret_key_ref {
+                name = kubernetes_secret_v1.minio_credentials.metadata[0].name
+                key  = "rootUser"
+              }
+            }
+          }
+
+          env {
+            name = "MINIO_ROOT_PASSWORD"
+            value_from {
+              secret_key_ref {
+                name = kubernetes_secret_v1.minio_credentials.metadata[0].name
+                key  = "rootPassword"
+              }
+            }
+          }
+
+          volume_mount {
+            name       = "data"
+            mount_path = "/data"
+          }
+        }
+
+        volume {
+          name = "data"
+          persistent_volume_claim {
+            claim_name = kubernetes_persistent_volume_claim_v1.minio.metadata[0].name
+          }
+        }
+      }
+    }
+  }
+}
+
+# PVC para armazenamento
+resource "kubernetes_persistent_volume_claim_v1" "minio" {
+  metadata {
+    name      = "minio-pvc"
+    namespace = kubernetes_namespace_v1.minio.metadata[0].name
+  }
+
+  spec {
+    access_modes = ["ReadWriteOnce"]
+    resources {
+      requests = {
+        storage = "10Gi"
+      }
+    }
+  }
+}
+
+# Service do MinIO
+resource "kubernetes_service_v1" "minio" {
+  metadata {
+    name      = "minio"
+    namespace = kubernetes_namespace_v1.minio.metadata[0].name
+  }
+
+  spec {
+    selector = {
+      app = "minio"
+    }
+
+    port {
+      name        = "api"
+      port        = 9000
+      target_port = 9000
+    }
+
+    port {
+      name        = "console"
+      port        = 9001
+      target_port = 9001
+    }
+  }
+}
+
+# Ingress para o MinIO
+resource "kubernetes_ingress_v1" "minio" {
+  metadata {
+    name      = "minio"
+    namespace = kubernetes_namespace_v1.minio.metadata[0].name
+    annotations = {
+      "traefik.ingress.kubernetes.io/router.entrypoints" = "web"
+    }
+  }
+
+  spec {
+    rule {
+      host = "minio.${var.domain_name}"
+      http {
+        path {
+          path        = "/"
+          path_type   = "Prefix"
+          backend {
+            service {
+              name = kubernetes_service_v1.minio.metadata[0].name
+              port {
+                number = 9000
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+# Criar buckets usando um pod init
+resource "kubernetes_job_v1" "create_buckets" {
+  depends_on = [kubernetes_deployment_v1.minio]
+
+  metadata {
+    name      = "minio-create-buckets"
+    namespace = kubernetes_namespace_v1.minio.metadata[0].name
+  }
+
+  spec {
+    template {
+      metadata {}
+      spec {
+        restart_policy = "OnFailure"
+
+        container {
+          name  = "mc"
+          image = "minio/mc:latest"
+
+          command = ["sh", "-c"]
+          args = [
+            <<-EOT
+            mc alias set myminio http://minio:9000 ${var.minio_access_key} ${var.minio_secret_key}
+            mc mb myminio/terraform-state --ignore-existing
+            mc mb myminio/gitlab-lfs --ignore-existing
+            mc mb myminio/gitlab-artifacts --ignore-existing
+            mc mb myminio/gitlab-uploads --ignore-existing
+            mc mb myminio/gitlab-packages --ignore-existing
+            echo "Buckets created successfully!"
+            EOT
+          ]
+        }
+      }
+    }
+    backoff_limit = 3
+  }
 }
 
 output "minio_url" {
-  value = "https://minio.${var.domain_name}"
+  value = "http://minio.${var.domain_name}"
+}
+
+output "minio_console_url" {
+  value = "http://minio.${var.domain_name}:9001"
 }
