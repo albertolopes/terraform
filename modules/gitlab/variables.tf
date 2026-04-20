@@ -42,3 +42,9 @@ variable "minio_secret_key" {
   sensitive   = true
   default     = "minioadmin123"
 }
+
+variable "redis_password" {
+  description = "Redis password"
+  type        = string
+  sensitive   = true
+}

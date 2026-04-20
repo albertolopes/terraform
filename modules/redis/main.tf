@@ -25,11 +25,11 @@ resource "kubernetes_secret_v1" "redis_password" {
   type = "Opaque"
 
   data = {
-    "redis-password" = base64encode(var.redis_password)
+    "redis-password" = var.redis_password
   }
 }
 
-# PVC para armazenamento persistente - MOVIDO PARA CIMA
+# PVC para armazenamento persistente
 resource "kubernetes_persistent_volume_claim_v1" "redis" {
   metadata {
     name      = "redis-pvc"
@@ -45,6 +45,7 @@ resource "kubernetes_persistent_volume_claim_v1" "redis" {
     }
   }
 }
+
 
 # Deployment do Redis
 resource "kubernetes_deployment_v1" "redis" {
@@ -75,7 +76,7 @@ resource "kubernetes_deployment_v1" "redis" {
       spec {
         container {
           name  = "redis"
-          image = "docker.io/bitnami/redis:7.2.5-debian-12-r0"
+          image = "redis:7.2-alpine" # Voltei para a imagem oficial e leve
 
           port {
             container_port = 6379
@@ -92,10 +93,12 @@ resource "kubernetes_deployment_v1" "redis" {
             }
           }
 
-          # A imagem da Bitnami espera que a senha seja passada como environment variable
-          # ou que o arquivo auth seja configurado. Como REDIS_PASSWORD foi adicionado
-          # o script entrypoint da Bitnami irá usá-la. Removemos os args pois podem
-          # sobrepor o entrypoint da imagem
+          args = [
+            "--requirepass",
+            "$(REDIS_PASSWORD)",
+            "--appendonly",
+            "yes"
+          ]
 
           resources {
             requests = {
@@ -110,7 +113,7 @@ resource "kubernetes_deployment_v1" "redis" {
 
           volume_mount {
             name       = "redis-data"
-            mount_path = "/bitnami/redis/data"
+            mount_path = "/data"
           }
 
           liveness_probe {

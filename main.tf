@@ -66,6 +66,7 @@ module "gitlab" {
   root_password      = var.gitlab_root_password
   minio_access_key   = var.minio_access_key
   minio_secret_key   = var.minio_secret_key
+  redis_password     = var.redis_password
 
   providers = {
     helm       = helm
