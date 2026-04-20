@@ -26,6 +26,7 @@ resource "helm_release" "minio" {
   name            = "minio"
   repository      = "https://charts.bitnami.com/bitnami"
   chart           = "minio"
+  version         = "14.7.6" 
   namespace       = "default"
   cleanup_on_fail = true
   wait            = true

@@ -1,4 +1,11 @@
 # modules/postgres/main.tf
+terraform {
+  required_providers {
+    kubernetes = {
+      source = "hashicorp/kubernetes"
+    }
+  }
+}
 
 resource "random_pet" "pvc_suffix" {
   length = 2
