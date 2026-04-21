@@ -241,7 +241,7 @@ resource "helm_release" "gitlab" {
             memory: 256Mi
         service:
           externalPort: 8150
-          internalPort: 8153
+          internalPort: 8156
 
       toolbox:
         enabled: true
