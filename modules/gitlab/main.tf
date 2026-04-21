@@ -6,7 +6,6 @@ resource "kubernetes_namespace_v1" "gitlab" {
   }
 }
 
-# Usar kubernetes_secret_v1 em vez de kubernetes_manifest
 resource "kubernetes_secret_v1" "gitlab_minio_secret" {
   metadata {
     name      = "gitlab-minio-secret"
@@ -17,14 +16,13 @@ resource "kubernetes_secret_v1" "gitlab_minio_secret" {
 
   data = {
     "connection" = <<-EOT
-[default]
-host = minio.minio.svc.cluster.local:9000
-access_key = ${var.minio_access_key}
-secret_key = ${var.minio_secret_key}
-use_ssl = false
+provider: AWS
+region: us-east-1
+aws_access_key_id: ${var.minio_access_key}
+aws_secret_access_key: ${var.minio_secret_key}
+endpoint: http://minio.default.svc.cluster.local:9000
+path_style: true
 EOT
-    "accesskey"  = var.minio_access_key
-    "secretkey"  = var.minio_secret_key
   }
 }
 
@@ -37,6 +35,7 @@ resource "kubernetes_secret_v1" "gitlab_root_secret" {
   type = "Opaque"
 
   data = {
+    # Sem base64encode
     "password" = var.root_password != null ? var.root_password : "changeme123"
   }
 }
@@ -50,7 +49,7 @@ resource "kubernetes_secret_v1" "gitlab_postgres_secret" {
   type = "Opaque"
 
   data = {
-    # Em modules/postgres/main.tf o banco é inicializado com a senha "postgres" no init.sql
+    # Sem base64encode
     "password" = "postgres"
   }
 }
@@ -64,15 +63,14 @@ resource "kubernetes_secret_v1" "gitlab_redis_secret" {
   type = "Opaque"
 
   data = {
-    # Aqui usamos o valor da variável recebida do main.tf
+    # Sem base64encode
     "redis-password" = var.redis_password
   }
 }
 
-
 resource "helm_release" "gitlab" {
   name             = "gitlab"
-  chart            = "${path.module}/charts/gitlab"  # Chart local
+  chart            = "${path.module}/charts/gitlab"
   namespace        = kubernetes_namespace_v1.gitlab.metadata[0].name
   timeout          = 1800
   create_namespace = false
@@ -124,15 +122,27 @@ resource "helm_release" "gitlab" {
         lfs:
           enabled: true
           bucket: gitlab-lfs
+          connection:
+            secret: gitlab-minio-secret
+            key: connection
         artifacts:
           enabled: true
           bucket: gitlab-artifacts
+          connection:
+            secret: gitlab-minio-secret
+            key: connection
         packages:
           enabled: true
           bucket: gitlab-packages
+          connection:
+            secret: gitlab-minio-secret
+            key: connection
         uploads:
           enabled: true
           bucket: gitlab-uploads
+          connection:
+            secret: gitlab-minio-secret
+            key: connection
         containerRegistry:
           enabled: false
         pseudonymizer:
@@ -162,6 +172,7 @@ resource "helm_release" "gitlab" {
     postgresql:
       install: false
 
+    # Este é o bloco correto para desabilitar o Redis interno
     redis:
       install: false
 
@@ -197,11 +208,6 @@ resource "helm_release" "gitlab" {
         workerProcesses: 2
         persistence:
           enabled: false
-        objectStorage:
-          enabled: true
-          config:
-            secret: gitlab-minio-secret
-            key: connection
 
       sidekiq:
         enabled: true
@@ -295,7 +301,6 @@ resource "helm_release" "gitlab" {
   ]
 }
 
-# Outputs
 output "gitlab_url" {
   value = "http://${var.domain_name}"
 }
