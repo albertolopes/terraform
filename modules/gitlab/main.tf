@@ -15,6 +15,7 @@ resource "kubernetes_secret_v1" "gitlab_minio_secret" {
   type = "Opaque"
 
   data = {
+    # Sem base64encode: O Terraform já faz a codificação automaticamente em blocos data
     "connection" = <<-EOT
 provider: AWS
 region: us-east-1
@@ -122,31 +123,15 @@ resource "helm_release" "gitlab" {
         lfs:
           enabled: true
           bucket: gitlab-lfs
-          connection:
-            secret: gitlab-minio-secret
-            key: connection
         artifacts:
           enabled: true
           bucket: gitlab-artifacts
-          connection:
-            secret: gitlab-minio-secret
-            key: connection
         packages:
           enabled: true
           bucket: gitlab-packages
-          connection:
-            secret: gitlab-minio-secret
-            key: connection
         uploads:
           enabled: true
           bucket: gitlab-uploads
-          connection:
-            secret: gitlab-minio-secret
-            key: connection
-        containerRegistry:
-          enabled: false
-        pseudonymizer:
-          enabled: false
         object_store:
           enabled: true
           proxy_download: true
