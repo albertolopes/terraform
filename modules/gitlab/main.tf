@@ -93,6 +93,11 @@ resource "helm_release" "gitlab" {
       ingress:
         enabled: true
         class: traefik
+        annotations:
+          kubernetes.io/ingress.provider: traefik
+          # Garante que o Traefik não force redirecionamento para HTTPS
+          traefik.ingress.kubernetes.io/router.tls: "false"
+          ingress.kubernetes.io/ssl-redirect: "false"
         configureCertmanager: false
         tls:
           enabled: false

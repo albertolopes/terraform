@@ -1,8 +1,8 @@
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: minio-host-ingress
-  namespace: default
+  name: authentik-host-ingress
+  namespace: authentik
   annotations:
     kubernetes.io/ingress.class: traefik
     kubernetes.io/ingress.provider: traefik
@@ -10,30 +10,19 @@ metadata:
     traefik.ingress.kubernetes.io/router.tls: "false"
     ingress.kubernetes.io/ssl-redirect: "false"
 spec:
-  ingressClassName: traefik # DEFINIÇÃO EXPLÍCITA
+  ingressClassName: traefik
   tls:
     - hosts:
-        - minio.avocado.tail799250.ts.net
-        - minio-console.avocado.tail799250.ts.net
+        - authentik.avocado.tail799250.ts.net
       secretName: tailscale-certs
   rules:
-    - host: minio.avocado.tail799250.ts.net
+    - host: authentik.avocado.tail799250.ts.net
       http:
         paths:
           - path: /
             pathType: Prefix
             backend:
               service:
-                name: minio
+                name: authentik-server
                 port:
                   number: 9000
-    - host: minio-console.avocado.tail799250.ts.net
-      http:
-        paths:
-          - path: /
-            pathType: Prefix
-            backend:
-              service:
-                name: minio
-                port:
-                  number: 9001
