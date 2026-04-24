@@ -278,9 +278,18 @@ resource "helm_release" "gitlab" {
   ]
 }
 
+# Data source para pegar o IP do serviço do GitLab
+data "kubernetes_service" "gitlab_webservice" {
+  depends_on = [helm_release.gitlab]
+  metadata {
+    name      = "gitlab-webservice-default"
+    namespace = var.namespace
+  }
+}
+
 # Instalar GitLab Runner separadamente via Helm (chart remoto) - Recursos AUMENTADOS
 resource "helm_release" "gitlab_runner" {
-  depends_on = [helm_release.gitlab]
+  depends_on = [helm_release.gitlab, data.kubernetes_service.gitlab_webservice]
 
   name             = "gitlab-runner"
   repository       = "https://charts.gitlab.io/"
@@ -304,6 +313,14 @@ resource "helm_release" "gitlab_runner" {
       tags: "kubernetes"
       runUntagged: true
       secretName: gitlab-runner-secret
+      # Variáveis de ambiente para forçar URL interna
+      env:
+        CI_SERVER_URL: http://gitlab-webservice-default.${var.namespace}.svc.cluster.local:8080
+        CI_SERVER_HOST: gitlab-webservice-default.${var.namespace}.svc.cluster.local
+        CI_SERVER_PORT: "8080"
+      # Timeouts e recursos aumentados
+      job_timeout: 3600
+      output_limit: 40960
       # Recursos aumentados para os pods de job
       kubernetes:
         cpu_limit: "4"
@@ -314,6 +331,14 @@ resource "helm_release" "gitlab_runner" {
         helper_memory_limit: "2Gi"
         helper_cpu_request: "500m"
         helper_memory_request: "1Gi"
+        poll_timeout: 600
+        poll_interval: 10
+        # Host aliases para resolver o domínio externo
+        host_aliases:
+          - ip: "${data.kubernetes_service.gitlab_webservice.spec[0].cluster_ip}"
+            hostnames:
+              - "${var.domain_name}"
+              - "gitlab.${var.domain_name}"
     resources:
       requests:
         cpu: 500m
