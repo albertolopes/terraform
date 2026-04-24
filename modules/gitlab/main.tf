@@ -240,7 +240,7 @@ resource "helm_release" "gitlab" {
             cpu: 100m
             memory: 128Mi
           limits:
-            cpu: 1m
+            cpu: 500m
             memory: 500Mi
         service:
           externalPort: 8150
@@ -280,6 +280,8 @@ resource "helm_release" "gitlab" {
 
     gitlab-runner:
       install: true
+      gitlabUrl: http://gitlab-webservice-default.${var.namespace}.svc.cluster.local:8080
+      runnerRegistrationToken: ${var.runner_registration_token}
       runners:
         privileged: true
         executor: kubernetes
@@ -294,10 +296,10 @@ resource "helm_release" "gitlab" {
           image: alpine:latest
           privileged: true
           allow_privilege_escalation: true
-          cpu_limit: "2"
-          memory_limit: "2Gi"
-          cpu_request: "500m"
-          memory_request: "512Mi"
+          cpu_limit: "4"
+          memory_limit: "4Gi"
+          cpu_request: "1"
+          memory_request: "1Gi"
           helper_image: "gitlab/gitlab-runner-helper:x86_64-latest"
           service_account: gitlab-runner
           pod_labels: "app=gitlab-runner"
@@ -305,11 +307,11 @@ resource "helm_release" "gitlab" {
           poll_interval: 3
       resources:
         requests:
-          cpu: 100m
-          memory: 256Mi
+          cpu: 200m
+          memory: 512Mi
         limits:
-          cpu: 1000m
-          memory: 1Gi
+          cpu: 2000m
+          memory: 2Gi
     YAML
   ]
 

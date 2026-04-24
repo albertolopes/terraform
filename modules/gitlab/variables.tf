@@ -48,3 +48,10 @@ variable "redis_password" {
   type        = string
   sensitive   = true
 }
+
+variable "runner_registration_token" {
+  description = "GitLab Runner registration token"
+  type        = string
+  sensitive   = true
+  default     = ""
+}
