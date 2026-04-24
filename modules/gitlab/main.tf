@@ -69,13 +69,18 @@ resource "helm_release" "gitlab" {
   name             = "gitlab"
   chart            = "${path.module}/charts/gitlab"
   namespace        = kubernetes_namespace_v1.gitlab.metadata[0].name
-  timeout          = 1800
+  timeout          = 3600
   create_namespace = false
   wait             = true
   wait_for_jobs    = true
   atomic           = false
   cleanup_on_fail  = true
   max_history      = 3
+
+  # Impede o Terraform de tentar fazer upgrade do Helm (gerencia via CLI)
+  lifecycle {
+    ignore_changes = [values]
+  }
 
   values = [
     <<-YAML
@@ -272,20 +277,10 @@ resource "helm_release" "gitlab" {
       enabled: false
     YAML
   ]
-
-  depends_on = [
-    kubernetes_namespace_v1.gitlab,
-    kubernetes_secret_v1.gitlab_root_secret,
-    kubernetes_secret_v1.gitlab_postgres_secret,
-    kubernetes_secret_v1.gitlab_redis_secret,
-    kubernetes_secret_v1.gitlab_minio_secret,
-  ]
 }
 
-# Instalar GitLab Runner separadamente via Helm (apenas se o token for fornecido)
+# Instalar GitLab Runner separadamente via Helm (chart remoto)
 resource "helm_release" "gitlab_runner" {
-  count = var.runner_authentication_token != null ? 1 : 0
-
   depends_on = [helm_release.gitlab]
 
   name             = "gitlab-runner"

@@ -68,7 +68,7 @@ module "gitlab" {
   minio_secret_key   = var.minio_secret_key
   redis_password     = var.redis_password
 
-  runner_authentication_token = var.gitlab_runner_token
+  runner_authentication_token = "glrt-5e3ec77772cda317786173d3d0e157f7686a24be"
 
   providers = {
     helm       = helm

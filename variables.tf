@@ -43,5 +43,5 @@ variable "gitlab_runner_token" {
   description = "GitLab Runner authentication token"
   type        = string
   sensitive   = true
-  default     = "glrt-9AK5sp2kFHj_H2uFGZfz"
+  default     = "glrt-5e3ec77772cda317786173d3d0e157f7686a24be"
 }
