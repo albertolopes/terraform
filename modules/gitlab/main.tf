@@ -15,7 +15,6 @@ resource "kubernetes_secret_v1" "gitlab_minio_secret" {
   type = "Opaque"
 
   data = {
-    # Sem base64encode: O Terraform já faz a codificação automaticamente em blocos data
     "connection" = <<-EOT
 provider: AWS
 region: us-east-1
@@ -36,7 +35,6 @@ resource "kubernetes_secret_v1" "gitlab_root_secret" {
   type = "Opaque"
 
   data = {
-    # Sem base64encode
     "password" = var.root_password != null ? var.root_password : "changeme123"
   }
 }
@@ -50,7 +48,6 @@ resource "kubernetes_secret_v1" "gitlab_postgres_secret" {
   type = "Opaque"
 
   data = {
-    # Sem base64encode
     "password" = "postgres"
   }
 }
@@ -64,7 +61,6 @@ resource "kubernetes_secret_v1" "gitlab_redis_secret" {
   type = "Opaque"
 
   data = {
-    # Sem base64encode
     "redis-password" = var.redis_password
   }
 }
@@ -77,7 +73,7 @@ resource "helm_release" "gitlab" {
   create_namespace = false
   wait             = true
   wait_for_jobs    = true
-  atomic           = true
+  atomic           = false
   cleanup_on_fail  = true
   max_history      = 3
 
@@ -95,7 +91,6 @@ resource "helm_release" "gitlab" {
         class: traefik
         annotations:
           kubernetes.io/ingress.provider: traefik
-          # Garante que o Traefik não force redirecionamento para HTTPS
           traefik.ingress.kubernetes.io/router.tls: "false"
           ingress.kubernetes.io/ssl-redirect: "false"
         configureCertmanager: false
@@ -124,6 +119,13 @@ resource "helm_release" "gitlab" {
         password:
           secret: gitlab-redis-secret
           key: redis-password
+      runners:
+        config: |
+          [[runners]]
+            [runners.kubernetes]
+              namespace = "${var.namespace}"
+              image = "alpine:latest"
+              privileged = true
       appConfig:
         lfs:
           enabled: true
@@ -150,9 +152,6 @@ resource "helm_release" "gitlab" {
     prometheus:
       install: false
 
-    gitlab-runner:
-      install: false
-
     registry:
       enabled: false
 
@@ -162,7 +161,6 @@ resource "helm_release" "gitlab" {
     postgresql:
       install: false
 
-    # Este é o bloco correto para desabilitar o Redis interno
     redis:
       install: false
 
@@ -242,8 +240,8 @@ resource "helm_release" "gitlab" {
             cpu: 100m
             memory: 128Mi
           limits:
-            cpu: 500m
-            memory: 256Mi
+            cpu: 1m
+            memory: 500Mi
         service:
           externalPort: 8150
           internalPort: 8156
@@ -279,6 +277,39 @@ resource "helm_release" "gitlab" {
 
     gitlab-exporter:
       enabled: false
+
+    gitlab-runner:
+      install: true
+      runners:
+        privileged: true
+        executor: kubernetes
+        tags: "kubernetes,gitlab,runner"
+        request_concurrency: 4
+        build_image: alpine:latest
+        runUntagged: true
+        protected: true
+        output_limit: 4096
+        kubernetes:
+          namespace: "${var.namespace}"
+          image: alpine:latest
+          privileged: true
+          allow_privilege_escalation: true
+          cpu_limit: "2"
+          memory_limit: "2Gi"
+          cpu_request: "500m"
+          memory_request: "512Mi"
+          helper_image: "gitlab/gitlab-runner-helper:x86_64-latest"
+          service_account: gitlab-runner
+          pod_labels: "app=gitlab-runner"
+          poll_timeout: 360
+          poll_interval: 3
+      resources:
+        requests:
+          cpu: 100m
+          memory: 256Mi
+        limits:
+          cpu: 500m
+          memory: 512Mi
     YAML
   ]
 
