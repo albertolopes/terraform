@@ -287,7 +287,7 @@ resource "helm_release" "gitlab_runner" {
   chart            = "gitlab-runner"
   namespace        = var.namespace
   version          = "0.70.0"
-  timeout          = 600
+  timeout          = 1800
   create_namespace = false
   wait             = true
   atomic           = false
