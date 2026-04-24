@@ -5,10 +5,10 @@ agents: 1
 nodeResources:
   server:
     cpu: "3.0"
-    memory: "5g"
+    memory: "6g"
   agent:
-    cpu: "0.5"
-    memory: "1g"
+    cpu: "2"
+    memory: "6g"
 
 kubelet:
   maxPodsPerNode: 110
