@@ -77,7 +77,6 @@ resource "helm_release" "gitlab" {
   cleanup_on_fail  = true
   max_history      = 3
 
-  # Impede o Terraform de tentar fazer upgrade do Helm (gerencia via CLI)
   lifecycle {
     ignore_changes = [values]
   }
@@ -279,7 +278,7 @@ resource "helm_release" "gitlab" {
   ]
 }
 
-# Instalar GitLab Runner separadamente via Helm (chart remoto)
+# Instalar GitLab Runner separadamente via Helm (chart remoto) - Recursos AUMENTADOS
 resource "helm_release" "gitlab_runner" {
   depends_on = [helm_release.gitlab]
 
@@ -305,13 +304,23 @@ resource "helm_release" "gitlab_runner" {
       tags: "kubernetes"
       runUntagged: true
       secretName: gitlab-runner-secret
+      # Recursos aumentados para os pods de job
+      kubernetes:
+        cpu_limit: "4"
+        memory_limit: "8Gi"
+        cpu_request: "2"
+        memory_request: "4Gi"
+        helper_cpu_limit: "1"
+        helper_memory_limit: "2Gi"
+        helper_cpu_request: "500m"
+        helper_memory_request: "1Gi"
     resources:
       requests:
-        cpu: 100m
-        memory: 256Mi
-      limits:
         cpu: 500m
-        memory: 512Mi
+        memory: 1Gi
+      limits:
+        cpu: 2
+        memory: 4Gi
     YAML
   ]
 }
