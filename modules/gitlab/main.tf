@@ -182,7 +182,7 @@ resource "helm_release" "gitlab" {
             memory: 2Gi
           limits:
             cpu: 4000m
-            memory: 4Gi
+            memory: 6Gi
         livenessProbe:
           initialDelaySeconds: 600
           periodSeconds: 30
