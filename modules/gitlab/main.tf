@@ -308,8 +308,8 @@ resource "helm_release" "gitlab" {
           cpu: 100m
           memory: 256Mi
         limits:
-          cpu: 500m
-          memory: 512Mi
+          cpu: 1000m
+          memory: 1Gi
     YAML
   ]
 
