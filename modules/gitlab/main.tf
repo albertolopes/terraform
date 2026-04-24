@@ -309,15 +309,7 @@ resource "helm_release" "gitlab_runner" {
       executor: kubernetes
       tags: "kubernetes"
       runUntagged: true
-      kubernetes:
-        namespace: "${var.namespace}"
-        image: alpine:latest
-        privileged: true
-        allow_privilege_escalation: true
-        cpu_limit: "2"
-        memory_limit: "2Gi"
-        cpu_request: "500m"
-        memory_request: "512Mi"
+      secretName: gitlab-runner-secret
     resources:
       requests:
         cpu: 100m
