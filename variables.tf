@@ -38,3 +38,10 @@ variable "redis_password" {
   sensitive   = true
   default     = "gitlab-redis-password"
 }
+
+variable "gitlab_runner_token" {
+  description = "GitLab Runner authentication token"
+  type        = string
+  sensitive   = true
+  default     = "glrt-9AK5sp2kFHj_H2uFGZfz"
+}

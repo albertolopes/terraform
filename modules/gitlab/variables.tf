@@ -49,9 +49,8 @@ variable "redis_password" {
   sensitive   = true
 }
 
-variable "runner_registration_token" {
-  description = "GitLab Runner registration token"
+variable "runner_authentication_token" {
+  description = "GitLab Runner authentication token (starts with glrt-)"
   type        = string
   sensitive   = true
-  default     = ""
 }

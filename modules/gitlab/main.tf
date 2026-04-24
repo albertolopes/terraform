@@ -281,7 +281,7 @@ resource "helm_release" "gitlab" {
     gitlab-runner:
       install: true
       gitlabUrl: http://gitlab-webservice-default.${var.namespace}.svc.cluster.local:8080
-      runnerRegistrationToken: ${var.runner_registration_token}
+      runnerToken: ${var.runner_authentication_token}
       runners:
         privileged: true
         executor: kubernetes
