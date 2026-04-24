@@ -282,8 +282,10 @@ resource "helm_release" "gitlab" {
   ]
 }
 
-# Instalar GitLab Runner separadamente via Helm
+# Instalar GitLab Runner separadamente via Helm (apenas se o token for fornecido)
 resource "helm_release" "gitlab_runner" {
+  count = var.runner_authentication_token != null ? 1 : 0
+
   depends_on = [helm_release.gitlab]
 
   name             = "gitlab-runner"
