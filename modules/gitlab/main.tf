@@ -119,13 +119,6 @@ resource "helm_release" "gitlab" {
         password:
           secret: gitlab-redis-secret
           key: redis-password
-      runners:
-        config: |
-          [[runners]]
-            [runners.kubernetes]
-              namespace = "${var.namespace}"
-              image = "alpine:latest"
-              privileged = true
       appConfig:
         lfs:
           enabled: true
@@ -277,41 +270,6 @@ resource "helm_release" "gitlab" {
 
     gitlab-exporter:
       enabled: false
-
-    gitlab-runner:
-      install: true
-      gitlabUrl: http://gitlab-webservice-default.${var.namespace}.svc.cluster.local:8080
-      runnerToken: ${var.runner_authentication_token}
-      runners:
-        privileged: true
-        executor: kubernetes
-        tags: "kubernetes,gitlab,runner"
-        request_concurrency: 4
-        build_image: alpine:latest
-        runUntagged: true
-        protected: true
-        output_limit: 4096
-        kubernetes:
-          namespace: "${var.namespace}"
-          image: alpine:latest
-          privileged: true
-          allow_privilege_escalation: true
-          cpu_limit: "4"
-          memory_limit: "4Gi"
-          cpu_request: "1"
-          memory_request: "1Gi"
-          helper_image: "gitlab/gitlab-runner-helper:x86_64-latest"
-          service_account: gitlab-runner
-          pod_labels: "app=gitlab-runner"
-          poll_timeout: 360
-          poll_interval: 3
-      resources:
-        requests:
-          cpu: 200m
-          memory: 512Mi
-        limits:
-          cpu: 2000m
-          memory: 2Gi
     YAML
   ]
 
@@ -321,6 +279,51 @@ resource "helm_release" "gitlab" {
     kubernetes_secret_v1.gitlab_postgres_secret,
     kubernetes_secret_v1.gitlab_redis_secret,
     kubernetes_secret_v1.gitlab_minio_secret,
+  ]
+}
+
+# Instalar GitLab Runner separadamente via Helm
+resource "helm_release" "gitlab_runner" {
+  depends_on = [helm_release.gitlab]
+
+  name             = "gitlab-runner"
+  repository       = "https://charts.gitlab.io/"
+  chart            = "gitlab-runner"
+  namespace        = var.namespace
+  version          = "0.70.0"
+  timeout          = 600
+  create_namespace = false
+  wait             = true
+  atomic           = false
+
+  values = [
+    <<-YAML
+    gitlabUrl: http://gitlab-webservice-default.${var.namespace}.svc.cluster.local:8080
+    runnerToken: ${var.runner_authentication_token}
+    rbac:
+      create: true
+    runners:
+      privileged: true
+      executor: kubernetes
+      tags: "kubernetes"
+      runUntagged: true
+      kubernetes:
+        namespace: "${var.namespace}"
+        image: alpine:latest
+        privileged: true
+        allow_privilege_escalation: true
+        cpu_limit: "2"
+        memory_limit: "2Gi"
+        cpu_request: "500m"
+        memory_request: "512Mi"
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
+    YAML
   ]
 }
 
