@@ -315,7 +315,7 @@ resource "helm_release" "gitlab_runner" {
   values = [
     <<-YAML
     gitlabUrl: http://gitlab-webservice-default.${var.namespace}.svc.cluster.local:8181
-    runnerRegistrationToken: ${var.runner_registration_token}
+    runnerToken: ${var.runner_authentication_token}
     checkInterval: 30
     rbac:
       create: true
