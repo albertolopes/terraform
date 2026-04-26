@@ -32,6 +32,7 @@ resource "helm_release" "cert_manager" {
   namespace  = "cert-manager"
   create_namespace = true
   version    = "v1.14.4"
+  timeout    = 1800
 
   set {
     name  = "installCRDs"
