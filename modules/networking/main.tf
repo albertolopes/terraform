@@ -37,16 +37,6 @@ resource "helm_release" "cert_manager" {
     name  = "installCRDs"
     value = "true"
   }
-  
-  set {
-    name  = "podDnsPolicy"
-    value = "None"
-  }
-  
-  set {
-    name  = "podDnsConfig.nameservers[0]"
-    value = "8.8.8.8"
-  }
 }
 
 # Wait for Cert-Manager CRDs to be ready
