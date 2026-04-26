@@ -83,7 +83,7 @@ resource "kubernetes_deployment_v1" "cloudflared" {
   }
 
   spec {
-    replicas = 2 # Alta disponibilidade
+    replicas = 1 # Reduzido para evitar conflitos iniciais
     selector {
       match_labels = {
         app = "cloudflared"
@@ -101,7 +101,7 @@ resource "kubernetes_deployment_v1" "cloudflared" {
         container {
           name  = "cloudflared"
           image = "cloudflare/cloudflared:latest"
-          args  = ["tunnel", "--no-autoupdate", "--metrics", "0.0.0.0:2000", "run"]
+          args  = ["tunnel", "--no-autoupdate", "--metrics", "0.0.0.0:2000", "--protocol", "http2", "run"]
 
           env {
             name = "TUNNEL_TOKEN"
@@ -113,15 +113,6 @@ resource "kubernetes_deployment_v1" "cloudflared" {
             }
           }
 
-          liveness_probe {
-            http_get {
-              path = "/ready"
-              port = 2000
-            }
-            failure_threshold     = 1
-            initial_delay_seconds = 10
-            period_seconds        = 10
-          }
         }
       }
     }

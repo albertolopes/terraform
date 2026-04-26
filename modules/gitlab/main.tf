@@ -71,7 +71,7 @@ resource "helm_release" "gitlab" {
   chart            = "gitlab"
   version          = var.chart_version
   namespace        = kubernetes_namespace_v1.gitlab.metadata[0].name
-  timeout          = 3600
+  timeout          = 2700
   create_namespace = false
   wait             = true
   wait_for_jobs    = true
