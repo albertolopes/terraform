@@ -67,11 +67,9 @@ resource "kubernetes_secret_v1" "gitlab_redis_secret" {
 
 resource "helm_release" "gitlab" {
   name             = "gitlab"
-  repository       = "https://charts.gitlab.io/"
-  chart            = "gitlab"
-  version          = var.chart_version
+  chart            = "${path.module}/charts/gitlab"
   namespace        = kubernetes_namespace_v1.gitlab.metadata[0].name
-  timeout          = 2700
+  timeout          = 3600
   create_namespace = false
   wait             = true
   wait_for_jobs    = true
