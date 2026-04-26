@@ -77,6 +77,8 @@ CMD=(
   --servers "$servers"
   --agents "$agents"
   --api-port "0.0.0.0:$API_PORT"
+  --dns 1.1.1.1
+  --dns 1.0.0.1
 )
 
 CMD+=(--k3s-arg "--kubelet-arg=--max-pods=$maxpods@server:0")
