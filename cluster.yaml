@@ -47,7 +47,7 @@ k3s:
 
 # 3. Limites de Memória e CPU via Docker
 env:
-  - envVar: K3D_SERVER_MEMORY=6G
+  - envVar: K3D_SERVER_MEMORY=3G
     nodeFilters: [server:0]
   - envVar: K3D_AGENT_MEMORY=6G
     nodeFilters: [agent:0]

@@ -179,28 +179,17 @@ resource "helm_release" "gitlab" {
         maxReplicas: 2
         hpa:
           enabled: false
-        env:
-          - name: PUMA_WORKERS
-            value: "2"
-          - name: GITLAB_RAILS_RACK_TIMEOUT
-            value: "600"
         resources:
           requests:
-            cpu: 1000m
-            memory: 2Gi
+            cpu: 500m
+            memory: 1.5Gi
           limits:
-            cpu: 4000m
-            memory: 6Gi
+            cpu: 3000m
+            memory: 4Gi
         livenessProbe:
           initialDelaySeconds: 600
-          periodSeconds: 30
-          timeoutSeconds: 10
-          failureThreshold: 15
         readinessProbe:
           initialDelaySeconds: 300
-          periodSeconds: 10
-          timeoutSeconds: 5
-          failureThreshold: 15
         workerProcesses: 2
         persistence:
           enabled: false
@@ -211,11 +200,11 @@ resource "helm_release" "gitlab" {
         maxReplicas: 2
         resources:
           requests:
-            cpu: 1000m
-            memory: 2Gi
+            cpu: 500m
+            memory: 1Gi
           limits:
-            cpu: 4000m
-            memory: 4Gi
+            cpu: 2000m
+            memory: 2Gi
         livenessProbe:
           initialDelaySeconds: 600
           periodSeconds: 30
