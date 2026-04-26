@@ -3,7 +3,7 @@
 variable "domain_name" {
   description = "Domínio principal"
   type        = string
-  default     = "tail799250.ts.net"
+  default     = "avocadotech.site" # Voltando para o domínio real
 }
 
 variable "admin_email" {
@@ -44,4 +44,20 @@ variable "gitlab_runner_token" {
   type        = string
   sensitive   = true
   default     = "glrt-5e3ec77772cda317786173d3d0e157f7686a24be"
+}
+
+variable "cloudflare_api_token" {
+  description = "Cloudflare API Token"
+  type        = string
+  sensitive   = true
+}
+
+variable "cloudflare_account_id" {
+  description = "Cloudflare Account ID"
+  type        = string
+}
+
+variable "cloudflare_zone_id" {
+  description = "Cloudflare Zone ID"
+  type        = string
 }

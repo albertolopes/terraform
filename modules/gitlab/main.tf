@@ -67,7 +67,9 @@ resource "kubernetes_secret_v1" "gitlab_redis_secret" {
 
 resource "helm_release" "gitlab" {
   name             = "gitlab"
-  chart            = "${path.module}/charts/gitlab"
+  repository       = "https://charts.gitlab.io/"
+  chart            = "gitlab"
+  version          = var.chart_version
   namespace        = kubernetes_namespace_v1.gitlab.metadata[0].name
   timeout          = 3600
   create_namespace = false
@@ -87,19 +89,20 @@ resource "helm_release" "gitlab" {
       edition: ce
       hosts:
         domain: ${var.domain_name}
-        https: false
+        https: true
         gitlab:
           name: ${var.domain_name}
+        registry:
+          name: registry.${var.domain_name}
       ingress:
         enabled: true
         class: traefik
         annotations:
           kubernetes.io/ingress.provider: traefik
-          traefik.ingress.kubernetes.io/router.tls: "false"
-          ingress.kubernetes.io/ssl-redirect: "false"
         configureCertmanager: false
         tls:
-          enabled: false
+          enabled: true
+          secretName: nginx-certs
       initialRootPassword:
         secret: gitlab-root-secret
       psql:
@@ -136,6 +139,9 @@ resource "helm_release" "gitlab" {
         uploads:
           enabled: true
           bucket: gitlab-uploads
+        registry:
+          enabled: true
+          bucket: gitlab-registry
         object_store:
           enabled: true
           proxy_download: true
@@ -150,7 +156,12 @@ resource "helm_release" "gitlab" {
       install: false
 
     registry:
-      enabled: false
+      enabled: true
+      ingress:
+        enabled: true
+        class: traefik
+        annotations:
+          kubernetes.io/ingress.provider: traefik
 
     nginx-ingress:
       enabled: false
@@ -287,7 +298,7 @@ data "kubernetes_service" "gitlab_webservice" {
   }
 }
 
-# Instalar GitLab Runner separadamente via Helm (chart remoto) - Recursos AUMENTADOS
+# Instalar GitLab Runner separadamente via Helm
 resource "helm_release" "gitlab_runner" {
   depends_on = [helm_release.gitlab, data.kubernetes_service.gitlab_webservice]
 
@@ -303,8 +314,9 @@ resource "helm_release" "gitlab_runner" {
 
   values = [
     <<-YAML
-    gitlabUrl: http://gitlab-webservice-default.${var.namespace}.svc.cluster.local:8080
-    runnerToken: ${var.runner_authentication_token}
+    gitlabUrl: http://gitlab-webservice-default.${var.namespace}.svc.cluster.local:8181
+    runnerRegistrationToken: ${var.runner_registration_token}
+    checkInterval: 30
     rbac:
       create: true
     runners:
@@ -313,15 +325,12 @@ resource "helm_release" "gitlab_runner" {
       tags: "kubernetes"
       runUntagged: true
       secretName: gitlab-runner-secret
-      # Variáveis de ambiente para forçar URL interna
       env:
         CI_SERVER_URL: http://gitlab-webservice-default.${var.namespace}.svc.cluster.local:8080
         CI_SERVER_HOST: gitlab-webservice-default.${var.namespace}.svc.cluster.local
         CI_SERVER_PORT: "8080"
-      # Timeouts e recursos aumentados
       job_timeout: 3600
       output_limit: 40960
-      # Recursos aumentados para os pods de job
       kubernetes:
         cpu_limit: "4"
         memory_limit: "8Gi"
@@ -333,12 +342,12 @@ resource "helm_release" "gitlab_runner" {
         helper_memory_request: "1Gi"
         poll_timeout: 600
         poll_interval: 10
-        # Host aliases para resolver o domínio externo
         host_aliases:
           - ip: "${data.kubernetes_service.gitlab_webservice.spec[0].cluster_ip}"
             hostnames:
               - "${var.domain_name}"
               - "gitlab.${var.domain_name}"
+              - "registry.${var.domain_name}"
     resources:
       requests:
         cpu: 500m
@@ -351,7 +360,7 @@ resource "helm_release" "gitlab_runner" {
 }
 
 output "gitlab_url" {
-  value = "http://${var.domain_name}"
+  value = "https://${var.domain_name}"
 }
 
 output "gitlab_status_command" {

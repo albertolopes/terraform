@@ -7,17 +7,15 @@ metadata:
     kubernetes.io/ingress.class: traefik
     kubernetes.io/ingress.provider: traefik
     traefik.ingress.kubernetes.io/router.entrypoints: websecure
-    traefik.ingress.kubernetes.io/router.tls: "false"
-    ingress.kubernetes.io/ssl-redirect: "false"
 spec:
   ingressClassName: traefik # DEFINIÇÃO EXPLÍCITA
   tls:
     - hosts:
-        - minio.avocado.tail799250.ts.net
-        - minio-console.avocado.tail799250.ts.net
-      secretName: tailscale-certs
+        - minio.avocadotech.site
+        - minio-console.avocadotech.site
+      secretName: nginx-certs
   rules:
-    - host: minio.avocado.tail799250.ts.net
+    - host: minio.avocadotech.site
       http:
         paths:
           - path: /
@@ -27,7 +25,7 @@ spec:
                 name: minio
                 port:
                   number: 9000
-    - host: minio-console.avocado.tail799250.ts.net
+    - host: minio-console.avocadotech.site
       http:
         paths:
           - path: /

@@ -7,16 +7,15 @@ metadata:
     kubernetes.io/ingress.class: traefik
     kubernetes.io/ingress.provider: traefik
     traefik.ingress.kubernetes.io/router.entrypoints: websecure
-    traefik.ingress.kubernetes.io/router.tls: "false"
-    ingress.kubernetes.io/ssl-redirect: "false"
+    traefik.ingress.kubernetes.io/router.entrypoints: websecure
 spec:
   ingressClassName: traefik
   tls:
     - hosts:
-        - authentik.avocado.tail799250.ts.net
-      secretName: tailscale-certs
+        - authentik.avocadotech.site
+      secretName: nginx-certs
   rules:
-    - host: authentik.avocado.tail799250.ts.net
+    - host: authentik.avocadotech.site
       http:
         paths:
           - path: /

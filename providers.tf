@@ -38,6 +38,14 @@ terraform {
       source  = "kreuzwerker/docker"
       version = "~> 3.0"
     }
+    cloudflare = {
+      source  = "cloudflare/cloudflare"
+      version = ">= 4.0.0"
+    }
+    http = {
+      source  = "hashicorp/http"
+      version = ">= 3.0.0"
+    }
   }
 }
 
@@ -60,3 +68,7 @@ provider "kubectl" {
 }
 
 provider "docker" {}
+
+provider "cloudflare" {
+  api_token = var.cloudflare_api_token
+}

@@ -1,39 +1,53 @@
-name: mycluster
+apiVersion: k3d.io/v1alpha5
+kind: Simple
+metadata:
+  name: mycluster
 servers: 1
 agents: 1
+image: rancher/k3s:v1.29.1-k3s1
 
-nodeResources:
-  server:
-    cpu: "3.0"
-    memory: "6g"
-  agent:
-    cpu: "2"
-    memory: "6g"
-
-kubelet:
-  maxPodsPerNode: 110
-
-podDefaults:
-  requests:
-    cpu: "100m"
-    memory: "128Mi"
-  limits:
-    cpu: "200m"
-    memory: "256Mi"
-
-# Optional labels per node (match node names created by k3d: k3d-<cluster>-server-0, k3d-<cluster>-agent-0 ...)
-nodeLabels:
-  - name: "k3d-mycluster-server-0"
+# 1. Recursos de Hardware (Aumentados para o GitLab)
+options:
+  runtime:
     labels:
-      role: control-plane
-  - name: "k3d-mycluster-agent-0"
-    labels:
-      role: worker
+      - label: "role=control-plane"
+        nodeFilters: [server:0]
+      - label: "role=worker"
+        nodeFilters: [agent:0]
 
-# Optional taints per node
-nodeTaints:
-  - name: "k3d-mycluster-server-0"
-    taints:
-      - key: "dedicated"
-        value: "infra"
-        effect: "NoSchedule"
+# Mapeamento de portas para o Traefik (essencial para o Ingress)
+ports:
+  - port: 80:80
+    nodeFilters:
+      - loadbalancer
+  - port: 443:443
+    nodeFilters:
+      - loadbalancer
+
+# 2. Configuração do Kubelet e Recursos
+registries:
+  config: |
+    mirrors:
+      "registry.avocadotech.site":
+        endpoint:
+          - "http://gitlab-webservice-default.gitlab.svc.cluster.local:8181"
+
+kubeAPI:
+  host: "127.0.0.1"
+  hostIP: "127.0.0.1"
+  hostPort: "6443"
+
+# Pods e Recursos
+k3s:
+  extraArgs:
+    - arg: "--kubelet-arg=max-pods=110"
+      nodeFilters: [server:0, agent:0]
+    - arg: "--node-taint=CriticalAddonsOnly=true:NoExecute"
+      nodeFilters: [server:0]
+
+# 3. Limites de Memória e CPU via Docker
+env:
+  - envVar: K3D_SERVER_MEMORY=6G
+    nodeFilters: [server:0]
+  - envVar: K3D_AGENT_MEMORY=6G
+    nodeFilters: [agent:0]

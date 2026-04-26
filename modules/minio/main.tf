@@ -132,36 +132,6 @@ resource "kubernetes_service_v1" "minio" {
   }
 }
 
-# Ingress para o MinIO
-resource "kubernetes_ingress_v1" "minio" {
-  metadata {
-    name      = "minio"
-    namespace = kubernetes_namespace_v1.minio.metadata[0].name
-    annotations = {
-      "traefik.ingress.kubernetes.io/router.entrypoints" = "web"
-    }
-  }
-
-  spec {
-    rule {
-      host = "minio.${var.domain_name}"
-      http {
-        path {
-          path        = "/"
-          path_type   = "Prefix"
-          backend {
-            service {
-              name = kubernetes_service_v1.minio.metadata[0].name
-              port {
-                number = 9000
-              }
-            }
-          }
-        }
-      }
-    }
-  }
-}
 
 # Criar buckets usando um pod job
 resource "kubernetes_job_v1" "create_buckets" {
@@ -204,7 +174,7 @@ resource "kubernetes_job_v1" "create_buckets" {
 }
 
 output "minio_url" {
-  value = "http://minio.${var.domain_name}"
+  value = "https://minio.${var.domain_name}"
 }
 
 output "minio_console_url" {

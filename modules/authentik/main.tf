@@ -42,7 +42,6 @@ resource "kubernetes_config_map_v1" "authentik_env" {
     "AUTHENTIK_POSTGRESQL__NAME"   = "authentik"
     "AUTHENTIK_ERROR_REPORTING__ENABLED" = "false"
     # Configuração de Proxy Reverso conforme diagnóstico
-    "AUTHENTIK_LISTEN__TRUSTED_PROXY_CIDRS" = "10.0.0.0/8,172.16.0.0/12,192.168.0.0/16"
   }
 }
 

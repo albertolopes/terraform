@@ -1,2 +1,4 @@
-# Este arquivo contém variáveis sensíveis e NÃO deve ser comitado no Git.
-# Certifique-se de que 'terraform.tfvars' está no seu arquivo .gitignore.
+domain_name           = ""
+cloudflare_api_token  = ""
+cloudflare_account_id = ""
+cloudflare_zone_id    = ""
