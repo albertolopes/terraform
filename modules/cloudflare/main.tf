@@ -60,7 +60,26 @@ resource "cloudflare_record" "tunnel_cnames" {
   allow_overwrite = true
 }
 
-# 5. Criar o segredo do túnel no Kubernetes
+# 5. Forçar SSL e HTTPS na Cloudflare via Terraform
+resource "cloudflare_zone_settings_override" "zone_settings" {
+  zone_id = var.cloudflare_zone_id
+
+  settings {
+    # Modo de criptografia SSL (Full/Strict)
+    ssl = "strict"
+    
+    # Redirecionar todo HTTP para HTTPS na borda da Cloudflare
+    always_use_https = "on"
+    
+    # Otimizações de segurança recomendadas
+    min_tls_version = "1.2"
+    hsts {
+      enabled = true
+    }
+  }
+}
+
+# 6. Criar o segredo do túnel no Kubernetes
 resource "kubernetes_secret_v1" "tunnel_token" {
   metadata {
     name      = "cloudflare-tunnel-token"

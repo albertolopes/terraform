@@ -198,11 +198,11 @@ resource "helm_release" "gitlab" {
         maxReplicas: 2
         resources:
           requests:
-            cpu: 500m
-            memory: 1Gi
-          limits:
-            cpu: 2000m
+            cpu: 1000m
             memory: 2Gi
+          limits:
+            cpu: 3000m
+            memory: 4Gi
         livenessProbe:
           initialDelaySeconds: 900
           periodSeconds: 30

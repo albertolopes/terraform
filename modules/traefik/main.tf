@@ -108,11 +108,6 @@ resource "kubernetes_config_map_v1" "traefik" {
       entryPoints:
         web:
           address: ":80"
-          http:
-            redirections:
-              entryPoint:
-                to: websecure
-                scheme: https
         websecure:
           address: ":443"
         traefik:
