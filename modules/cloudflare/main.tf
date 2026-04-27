@@ -73,8 +73,11 @@ resource "cloudflare_zone_settings_override" "zone_settings" {
     
     # Otimizações de segurança recomendadas
     min_tls_version = "1.2"
-    hsts {
+    security_header {
       enabled = true
+      hsts {
+        enabled = true
+      }
     }
   }
 }
