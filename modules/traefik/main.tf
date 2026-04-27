@@ -347,9 +347,6 @@ resource "kubectl_manifest" "dashboard_auth" {
   YAML
 }
 
-  YAML
-}
-
 # Middleware para forçar header HTTPS (Resolve erro 422 no GitLab/Authentik)
 resource "kubectl_manifest" "force_https_header" {
   depends_on = [kubectl_manifest.traefik_crds]
