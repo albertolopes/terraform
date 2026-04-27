@@ -285,9 +285,17 @@ data "kubernetes_service" "gitlab_webservice" {
   }
 }
 
+# Data source para pegar o IP do serviço do Traefik
+data "kubernetes_service" "traefik" {
+  metadata {
+    name      = "traefik"
+    namespace = "traefik"
+  }
+}
+
 # Instalar GitLab Runner separadamente via Helm
 resource "helm_release" "gitlab_runner" {
-  depends_on = [helm_release.gitlab, data.kubernetes_service.gitlab_webservice]
+  depends_on = [helm_release.gitlab, data.kubernetes_service.gitlab_webservice, data.kubernetes_service.traefik]
 
   name             = "gitlab-runner"
   repository       = "https://charts.gitlab.io/"
@@ -301,11 +309,19 @@ resource "helm_release" "gitlab_runner" {
 
   values = [
     <<-YAML
-    gitlabUrl: http://gitlab-webservice-default.${var.namespace}.svc.cluster.local:8181
+    gitlabUrl: https://${var.domain_name}/
     runnerToken: ${var.runner_authentication_token}
+    runnerRegistrationToken: ""
     checkInterval: 30
     rbac:
       create: true
+    
+    # Host Alias para o pod do Runner Agent conseguir falar com o GitLab via Traefik
+    hostAliases:
+      - ip: "${data.kubernetes_service.traefik.spec[0].cluster_ip}"
+        hostnames:
+          - "${var.domain_name}"
+
     runners:
       privileged: true
       executor: kubernetes
@@ -313,9 +329,8 @@ resource "helm_release" "gitlab_runner" {
       runUntagged: true
       secretName: gitlab-runner-secret
       env:
-        CI_SERVER_URL: http://gitlab-webservice-default.${var.namespace}.svc.cluster.local:8080
-        CI_SERVER_HOST: gitlab-webservice-default.${var.namespace}.svc.cluster.local
-        CI_SERVER_PORT: "8080"
+        CI_SERVER_URL: https://${var.domain_name}/
+        CI_SERVER_HOST: ${var.domain_name}
       job_timeout: 3600
       output_limit: 40960
       kubernetes:
@@ -330,11 +345,9 @@ resource "helm_release" "gitlab_runner" {
         poll_timeout: 600
         poll_interval: 10
         host_aliases:
-          - ip: "${data.kubernetes_service.gitlab_webservice.spec[0].cluster_ip}"
+          - ip: "${data.kubernetes_service.traefik.spec[0].cluster_ip}"
             hostnames:
               - "${var.domain_name}"
-              - "gitlab.${var.domain_name}"
-              - "registry.${var.domain_name}"
     resources:
       requests:
         cpu: 500m
