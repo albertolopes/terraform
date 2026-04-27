@@ -181,9 +181,9 @@ resource "helm_release" "gitlab" {
             cpu: 3000m
             memory: 4Gi
         livenessProbe:
-          initialDelaySeconds: 600
+          initialDelaySeconds: 900
         readinessProbe:
-          initialDelaySeconds: 300
+          initialDelaySeconds: 600
         workerProcesses: 2
         persistence:
           enabled: false
@@ -204,12 +204,12 @@ resource "helm_release" "gitlab" {
             cpu: 2000m
             memory: 2Gi
         livenessProbe:
-          initialDelaySeconds: 600
+          initialDelaySeconds: 900
           periodSeconds: 30
           timeoutSeconds: 10
           failureThreshold: 15
         readinessProbe:
-          initialDelaySeconds: 300
+          initialDelaySeconds: 600
           periodSeconds: 10
           timeoutSeconds: 5
           failureThreshold: 15
@@ -272,6 +272,9 @@ resource "helm_release" "gitlab" {
 
     gitlab-exporter:
       enabled: false
+
+    gitlab-runner:
+      install: false
     YAML
   ]
 }
@@ -310,8 +313,9 @@ resource "helm_release" "gitlab_runner" {
   values = [
     <<-YAML
     gitlabUrl: http://gitlab-webservice-default.${var.namespace}.svc.cluster.local:8181
+    # Para tokens glrt- (Authentication Token, novo fluxo GitLab 15.6+)
+    # NÃO usar runnerRegistrationToken - usar runnerToken
     runnerToken: ${var.runner_authentication_token}
-    runnerRegistrationToken: ""
     checkInterval: 30
     rbac:
       create: true
