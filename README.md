@@ -184,4 +184,12 @@ sed -i "s/192.168.0.100/$(tailscale ip -4)/" .k3d_kubeconfig
     ```sh
     kubectl get certificate -w
     ```
-    (Use os outros comandos de `describe` se o certificado ficar travado em `False`).
+### GitLab: Erros de instalação ou redirect loop
+**Sintoma:** O GitLab ou o Runner não conectam, ou o Helm acusa erro de "already exists".
+**Solução:**
+1.  Limpe os recursos órfãos no namespace (isso não apaga seus dados do banco ou arquivos):
+    ```sh
+    # Deleta quase tudo no namespace gitlab (não deleta os PVCs)
+    kubectl delete deployment,service,ingress,configmap,secret,hpa -n gitlab --all --insecure-skip-tls-verify
+    ```
+2.  Rode o `terraform apply` novamente para que ele recrie tudo de forma limpa.
