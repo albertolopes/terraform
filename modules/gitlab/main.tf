@@ -298,7 +298,7 @@ data "kubernetes_service" "traefik" {
 
 # Instalar GitLab Runner separadamente via Helm
 resource "helm_release" "gitlab_runner" {
-  depends_on = [helm_release.gitlab, data.kubernetes_service.gitlab_webservice, data.kubernetes_service.traefik]
+  depends_on = [data.kubernetes_service.gitlab_webservice, data.kubernetes_service.traefik]
 
   name             = "gitlab-runner"
   repository       = "https://charts.gitlab.io/"

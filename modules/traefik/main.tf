@@ -397,33 +397,24 @@ resource "kubectl_manifest" "traefik_dashboard_unified" {
           middlewares:
             - name: dashboard-auth
               namespace: traefik
-        - match: Host(`authentik.${var.domain_name}`) && PathPrefix(`/authentik`)
+        - match: Host(`authentik.${var.domain_name}`)
           kind: Rule
           services:
             - name: authentik-server
               namespace: authentik
               port: 9000
-          middlewares:
-            - name: strip-prefixes
-              namespace: traefik
-        - match: Host(`minio.${var.domain_name}`) && PathPrefix(`/minio`)
+        - match: Host(`minio.${var.domain_name}`)
           kind: Rule
           services:
             - name: minio
               namespace: default
               port: 9000
-          middlewares:
-            - name: strip-prefixes
-              namespace: traefik
-        - match: Host(`minio-console.${var.domain_name}`) && PathPrefix(`/console`)
+        - match: Host(`minio-console.${var.domain_name}`)
           kind: Rule
           services:
             - name: minio
               namespace: default
               port: 9001
-          middlewares:
-            - name: strip-prefixes
-              namespace: traefik
       tls:
         secretName: traefik-certs
   YAML

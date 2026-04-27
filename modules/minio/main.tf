@@ -173,6 +173,74 @@ resource "kubernetes_job_v1" "create_buckets" {
   }
 }
 
+# Ingress para o MinIO API
+resource "kubernetes_ingress_v1" "minio" {
+  metadata {
+    name      = "minio-ingress"
+    namespace = kubernetes_namespace_v1.minio.metadata[0].name
+    annotations = {
+      "kubernetes.io/ingress.class" = "traefik"
+    }
+  }
+
+  spec {
+    rule {
+      host = "minio.${var.domain_name}"
+      http {
+        path {
+          path      = "/"
+          path_type = "Prefix"
+          backend {
+            service {
+              name = kubernetes_service_v1.minio.metadata[0].name
+              port {
+                number = 9000
+              }
+            }
+          }
+        }
+      }
+    }
+    tls {
+      secret_name = "nginx-certs"
+    }
+  }
+}
+
+# Ingress para o MinIO Console
+resource "kubernetes_ingress_v1" "minio_console" {
+  metadata {
+    name      = "minio-console-ingress"
+    namespace = kubernetes_namespace_v1.minio.metadata[0].name
+    annotations = {
+      "kubernetes.io/ingress.class" = "traefik"
+    }
+  }
+
+  spec {
+    rule {
+      host = "minio-console.${var.domain_name}"
+      http {
+        path {
+          path      = "/"
+          path_type = "Prefix"
+          backend {
+            service {
+              name = kubernetes_service_v1.minio.metadata[0].name
+              port {
+                number = 9001
+              }
+            }
+          }
+        }
+      }
+    }
+    tls {
+      secret_name = "nginx-certs"
+    }
+  }
+}
+
 output "minio_url" {
   value = "https://minio.${var.domain_name}"
 }
