@@ -77,10 +77,6 @@ resource "helm_release" "gitlab" {
   cleanup_on_fail  = true
   max_history      = 3
 
-  lifecycle {
-    ignore_changes = [values]
-  }
-
   values = [
     <<-YAML
     global:
@@ -191,6 +187,10 @@ resource "helm_release" "gitlab" {
         workerProcesses: 2
         persistence:
           enabled: false
+        extraEnv:
+          GITLAB_PORT: "443"
+          GITLAB_HTTPS: "true"
+          EXTERNAL_URL: "https://${var.domain_name}"
 
       sidekiq:
         enabled: true
@@ -309,7 +309,7 @@ resource "helm_release" "gitlab_runner" {
 
   values = [
     <<-YAML
-    gitlabUrl: https://${var.domain_name}/
+    gitlabUrl: http://gitlab-webservice-default.${var.namespace}.svc.cluster.local:8181
     runnerToken: ${var.runner_authentication_token}
     runnerRegistrationToken: ""
     checkInterval: 30
