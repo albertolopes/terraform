@@ -329,8 +329,9 @@ resource "helm_release" "gitlab_runner" {
       runUntagged: true
       secretName: gitlab-runner-secret
       env:
-        CI_SERVER_URL: https://${var.domain_name}/
-        CI_SERVER_HOST: ${var.domain_name}
+        CI_SERVER_URL: http://gitlab-webservice-default.${var.namespace}.svc.cluster.local:8181
+        CI_SERVER_HOST: gitlab-webservice-default.${var.namespace}.svc.cluster.local
+        CI_SERVER_PORT: "8181"
       job_timeout: 3600
       output_limit: 40960
       kubernetes:
