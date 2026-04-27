@@ -347,6 +347,25 @@ resource "kubectl_manifest" "dashboard_auth" {
   YAML
 }
 
+  YAML
+}
+
+# Middleware para forçar header HTTPS (Resolve erro 422 no GitLab/Authentik)
+resource "kubectl_manifest" "force_https_header" {
+  depends_on = [kubectl_manifest.traefik_crds]
+  yaml_body = <<-YAML
+    apiVersion: traefik.io/v1alpha1
+    kind: Middleware
+    metadata:
+      name: force-https-header
+      namespace: ${kubernetes_namespace_v1.traefik.metadata[0].name}
+    spec:
+      headers:
+        customRequestHeaders:
+          X-Forwarded-Proto: "https"
+  YAML
+}
+
 # Middleware StripPrefix (Para Minio, Console e Authentik)
 resource "kubectl_manifest" "strip_prefixes" {
   depends_on = [kubectl_manifest.traefik_crds]
@@ -403,18 +422,24 @@ resource "kubectl_manifest" "traefik_dashboard_unified" {
             - name: authentik-server
               namespace: authentik
               port: 9000
+          middlewares:
+            - name: force-https-header
         - match: Host(`minio.${var.domain_name}`)
           kind: Rule
           services:
             - name: minio
               namespace: default
               port: 9000
+          middlewares:
+            - name: force-https-header
         - match: Host(`minio-console.${var.domain_name}`)
           kind: Rule
           services:
             - name: minio
               namespace: default
               port: 9001
+          middlewares:
+            - name: force-https-header
       tls:
         secretName: traefik-certs
   YAML

@@ -93,6 +93,7 @@ resource "helm_release" "gitlab" {
         class: traefik
         annotations:
           kubernetes.io/ingress.provider: traefik
+          traefik.ingress.kubernetes.io/router.middlewares: traefik-force-https-header@kubernetescrd
         configureCertmanager: false
         tls:
           enabled: true
@@ -156,6 +157,7 @@ resource "helm_release" "gitlab" {
         class: traefik
         annotations:
           kubernetes.io/ingress.provider: traefik
+          traefik.ingress.kubernetes.io/router.middlewares: traefik-force-https-header@kubernetescrd
 
     nginx-ingress:
       enabled: false
