@@ -21,7 +21,7 @@ variable "root_password" {
 variable "gitlab_version" {
   description = "GitLab version to install"
   type        = string
-  default     = "17.9.0"
+  default     = "18.0.0"
 }
 
 variable "chart_version" {
