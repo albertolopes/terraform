@@ -50,19 +50,6 @@ resource "kubernetes_secret_v1" "gitlab_postgres_secret" {
   }
 }
 
-resource "kubernetes_secret_v1" "gitlab_redis_secret" {
-  metadata {
-    name      = "gitlab-redis-secret"
-    namespace = var.namespace
-  }
-
-  type = "Opaque"
-
-  data = {
-    "redis-password" = var.redis_password
-  }
-}
-
 resource "helm_release" "gitlab" {
   name             = "gitlab"
   repository       = "https://charts.gitlab.io/"
@@ -86,6 +73,17 @@ resource "helm_release" "gitlab" {
         https: true
       image:
         tag: ${var.gitlab_version}
+
+      # Configuração apenas do PostgreSQL Externo
+      psql:
+        host: postgres.postgres.svc.cluster.local
+        port: 5433
+        username: postgres
+        database: gitlabhq_production
+        password:
+          secret: gitlab-postgres-secret
+          key: password
+
       appConfig:
         lfs:
           enabled: true
@@ -109,7 +107,6 @@ resource "helm_release" "gitlab" {
             secret: gitlab-minio-secret
             key: connection
 
-    # Correção do erro de validação do Chart
     certmanager-issuer:
       email: "admin@${var.domain_name}"
 
@@ -124,6 +121,14 @@ resource "helm_release" "gitlab" {
 
     gitlab-exporter:
       enabled: false
+
+    # PostgreSQL permanece desativado (usando global.psql externo)
+    postgresql:
+      install: false
+
+    # Redis AGORA SERÁ INSTALADO pelo chart (interno)
+    redis:
+      install: true
 
     gitlab:
       webservice:
@@ -204,26 +209,6 @@ resource "helm_release" "gitlab" {
           limits:
             cpu: 3000m
             memory: 4Gi
-
-    postgresql:
-      install: false
-
-    psql:
-      host: postgres.postgres.svc.cluster.local
-      port: 5433
-      username: postgres
-      password:
-        secret: gitlab-postgres-secret
-        key: password
-      database: gitlabhq_production
-
-    redis:
-      install: false
-      host: redis.redis.svc.cluster.local
-      port: 6379
-      password:
-        secret: gitlab-redis-secret
-        key: redis-password
 
     ingress:
       enabled: true
