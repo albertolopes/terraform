@@ -20,7 +20,7 @@ provider: AWS
 region: us-east-1
 aws_access_key_id: ${var.minio_access_key}
 aws_secret_access_key: ${var.minio_secret_key}
-endpoint: http://minio.default.svc.cluster.local:9000
+endpoint: http://minio.minio.svc.cluster.local:9000
 path_style: true
 EOT
   }
