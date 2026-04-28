@@ -177,33 +177,10 @@ gitlab:
       limits:
         cpu: 6000m
         memory: 7.5Gi
-    livenessProbe:
-      initialDelaySeconds: 900
-    readinessProbe:
-      initialDelaySeconds: 600
-    workerProcesses: 2
-    persistence:
-      enabled: false
-    extraEnv:
-      GITLAB_PORT: "443"
-      GITLAB_HTTPS: "true"
-EXTERNAL_URL: "https://${var.domain_name}"
-
-  sidekiq:
-    enabled: true
-    minReplicas: 1
-    maxReplicas: 2
-    resources:
-      requests:
-        cpu: 1000m
-        memory: 2Gi
-      limits:
-        cpu: 4000m
-        memory: 6Gi
-    livenessProbe:
+    liveness
       initialDelaySeconds: 900
       periodSeconds: 30
-      timeoutSeconds: 10
+timeoutSeconds: 10
       failureThreshold: 15
     readinessProbe:
       initialDelaySeconds: 600
