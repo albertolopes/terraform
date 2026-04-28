@@ -19,8 +19,9 @@ resource "kubernetes_secret_v1" "minio_credentials" {
   }
 
   data = {
-    rootUser     = base64encode(var.minio_access_key)
-    rootPassword = base64encode(var.minio_secret_key)
+    # Removido base64encode: O Terraform já faz a codificação automaticamente
+    rootUser     = var.minio_access_key
+    rootPassword = var.minio_secret_key
   }
 }
 
