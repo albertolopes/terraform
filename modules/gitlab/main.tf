@@ -115,6 +115,9 @@ resource "helm_release" "gitlab" {
         enabled: false
       gitaly:
         enabled: true
+        auth:
+          token:
+            enabled: false # Desabilitando a autenticação do Gitaly para debug
       redis:
         host: redis.redis.svc.cluster.local
         port: 6379
