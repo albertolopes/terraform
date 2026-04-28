@@ -87,6 +87,11 @@ resource "helm_release" "gitlab" {
   image:
     tag: ${var.gitlab_version}
 
+certmanager:
+  install: false
+  issuer:
+    email: "admin@avocadotech.site"
+
 gitlab:
   name: ${var.domain_name}
   registry:
@@ -150,9 +155,6 @@ appConfig:
       secret: gitlab-minio-secret
       key: connection
 
-certmanager:
-  install: false
-
 prometheus:
   install: false
 
@@ -185,7 +187,7 @@ gitlab:
     extraEnv:
       GITLAB_PORT: "443"
       GITLAB_HTTPS: "true"
-      EXTERNAL_URL: "https://${var.domain_name}"
+EXTERNAL_URL: "https://${var.domain_name}"
 
   sidekiq:
     enabled: true
@@ -199,7 +201,7 @@ gitlab:
         cpu: 4000m
         memory: 6Gi
     livenessProbe:
-initialDelaySeconds: 900
+      initialDelaySeconds: 900
       periodSeconds: 30
       timeoutSeconds: 10
       failureThreshold: 15
