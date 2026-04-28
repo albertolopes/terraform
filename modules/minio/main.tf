@@ -163,6 +163,7 @@ resource "kubernetes_job_v1" "create_buckets" {
             mc mb myminio/gitlab-artifacts --ignore-existing
             mc mb myminio/gitlab-uploads --ignore-existing
             mc mb myminio/gitlab-packages --ignore-existing
+            mc mb myminio/gitlab-registry --ignore-existing
             echo "Buckets created successfully!"
             EOT
           ]
