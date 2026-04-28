@@ -175,18 +175,23 @@ resource "helm_release" "gitlab" {
         maxReplicas: 2
         hpa:
           enabled: false
+        env:
+          - name: PUMA_WORKERS
+            value: "1"
+          - name: GITLAB_RAILS_RACK_TIMEOUT
+            value: "600"
         resources:
           requests:
-            cpu: 500m
-            memory: 1.5Gi
+            cpu: 1000m
+            memory: 2Gi
           limits:
-            cpu: 3000m
-            memory: 4Gi
+            cpu: 6000m
+            memory: 8Gi
         livenessProbe:
           initialDelaySeconds: 900
         readinessProbe:
           initialDelaySeconds: 600
-        workerProcesses: 2
+        workerProcesses: 4
         persistence:
           enabled: false
         extraEnv:
@@ -203,8 +208,8 @@ resource "helm_release" "gitlab" {
             cpu: 1000m
             memory: 2Gi
           limits:
-            cpu: 3000m
-            memory: 4Gi
+            cpu: 4000m
+            memory: 6Gi
         livenessProbe:
           initialDelaySeconds: 900
           periodSeconds: 30
@@ -222,11 +227,11 @@ resource "helm_release" "gitlab" {
         maxReplicas: 2
         resources:
           requests:
-            cpu: 100m
-            memory: 128Mi
-          limits:
-            cpu: 500m
+            cpu: 200m
             memory: 256Mi
+          limits:
+            cpu: 1000m
+            memory: 512Mi
 
       kas:
         enabled: true
@@ -234,11 +239,11 @@ resource "helm_release" "gitlab" {
         maxReplicas: 2
         resources:
           requests:
-            cpu: 100m
-            memory: 128Mi
+            cpu: 200m
+            memory: 256Mi
           limits:
-            cpu: 500m
-            memory: 500Mi
+            cpu: 1000m
+            memory: 1Gi
         service:
           externalPort: 8150
           internalPort: 8156
@@ -250,8 +255,8 @@ resource "helm_release" "gitlab" {
             cpu: 500m
             memory: 1Gi
           limits:
-            cpu: 2000m
-            memory: 2Gi
+            cpu: 3000m
+            memory: 3Gi
         backups:
           cron:
             enabled: false
@@ -260,11 +265,11 @@ resource "helm_release" "gitlab" {
         enabled: true
         resources:
           requests:
-            cpu: 500m
-            memory: 1Gi
-          limits:
-            cpu: 2000m
+            cpu: 1000m
             memory: 2Gi
+          limits:
+            cpu: 3000m
+            memory: 4Gi
 
       praefect:
         enabled: false
@@ -300,7 +305,7 @@ data "kubernetes_service" "traefik" {
 
 # Instalar GitLab Runner separadamente via Helm
 resource "helm_release" "gitlab_runner" {
-  depends_on = [data.kubernetes_service.gitlab_webservice, data.kubernetes_service.traefik]
+  depends_on = [helm_release.gitlab, data.kubernetes_service.gitlab_webservice, data.kubernetes_service.traefik]
 
   name             = "gitlab-runner"
   repository       = "https://charts.gitlab.io/"
@@ -345,23 +350,25 @@ resource "helm_release" "gitlab_runner" {
         memory_limit: "8Gi"
         cpu_request: "2"
         memory_request: "4Gi"
-        helper_cpu_limit: "1"
-        helper_memory_limit: "2Gi"
-        helper_cpu_request: "500m"
-        helper_memory_request: "1Gi"
+        helper_cpu_limit: "2"
+        helper_memory_limit: "4Gi"
+        helper_cpu_request: "1"
+        helper_memory_request: "2Gi"
         poll_timeout: 600
         poll_interval: 10
         host_aliases:
           - ip: "${data.kubernetes_service.traefik.spec[0].cluster_ip}"
             hostnames:
               - "${var.domain_name}"
+              - "gitlab.${var.domain_name}"
+              - "registry.${var.domain_name}"
     resources:
       requests:
-        cpu: 500m
-        memory: 1Gi
+        cpu: 1000m
+        memory: 2Gi
       limits:
-        cpu: 2
-        memory: 4Gi
+        cpu: 4
+        memory: 8Gi
     YAML
   ]
 }
