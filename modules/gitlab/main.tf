@@ -183,7 +183,7 @@ resource "helm_release" "gitlab" {
       webservice:
         enabled: true
         minReplicas: 1
-        maxReplicas: 2
+        maxReplicas: 1 # Alterado para 1
         hpa:
           enabled: false
         env:
