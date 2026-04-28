@@ -125,15 +125,19 @@ resource "helm_release" "gitlab" {
         lfs:
           enabled: true
           bucket: gitlab-lfs
+          connection: null
         artifacts:
           enabled: true
           bucket: gitlab-artifacts
+          connection: null
         packages:
           enabled: true
           bucket: gitlab-packages
+          connection: null
         uploads:
           enabled: true
           bucket: gitlab-uploads
+          connection: null
         registry:
           enabled: true
           bucket: gitlab-registry
@@ -172,7 +176,7 @@ resource "helm_release" "gitlab" {
       webservice:
         enabled: true
         minReplicas: 1
-        maxReplicas: 1
+        maxReplicas: 2
         hpa:
           enabled: false
         env:
