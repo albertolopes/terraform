@@ -172,26 +172,26 @@ resource "helm_release" "gitlab" {
       webservice:
         enabled: true
         minReplicas: 1
-        maxReplicas: 2
+        maxReplicas: 1
         hpa:
           enabled: false
         env:
           - name: PUMA_WORKERS
-            value: "1"
+            value: "2"
           - name: GITLAB_RAILS_RACK_TIMEOUT
             value: "600"
         resources:
           requests:
-            cpu: 1000m
+            cpu: 2000m
             memory: 2Gi
           limits:
             cpu: 6000m
-            memory: 8Gi
+            memory: 7.5Gi
         livenessProbe:
           initialDelaySeconds: 900
         readinessProbe:
           initialDelaySeconds: 600
-        workerProcesses: 4
+        workerProcesses: 2
         persistence:
           enabled: false
         extraEnv:
@@ -346,7 +346,7 @@ resource "helm_release" "gitlab_runner" {
       job_timeout: 3600
       output_limit: 40960
       kubernetes:
-        cpu_limit: "4"
+        cpu_limit: "2"
         memory_limit: "8Gi"
         cpu_request: "2"
         memory_request: "4Gi"

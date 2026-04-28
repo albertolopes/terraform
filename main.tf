@@ -106,7 +106,7 @@ module "gitlab" {
   redis_password     = var.redis_password
 
 
-  runner_authentication_token = "glrt-5e3ec77772cda317786173d3d0e157f7686a24be"
+  runner_authentication_token = var.gitlab_runner_token
 
   providers = {
     helm       = helm
