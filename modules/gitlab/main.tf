@@ -109,6 +109,10 @@ resource "helm_release" "gitlab" {
             secret: gitlab-minio-secret
             key: connection
 
+    # Correção do erro de validação do Chart
+    certmanager-issuer:
+      email: "admin@${var.domain_name}"
+
     certmanager:
       install: false
 
@@ -235,7 +239,6 @@ resource "helm_release" "gitlab" {
   ]
 }
 
-# Data source para pegar o IP do serviço do GitLab
 data "kubernetes_service" "gitlab_webservice" {
   depends_on = [helm_release.gitlab]
   metadata {
@@ -244,7 +247,6 @@ data "kubernetes_service" "gitlab_webservice" {
   }
 }
 
-# Data source para pegar o IP do serviço do Traefik
 data "kubernetes_service" "traefik" {
   metadata {
     name      = "traefik"
@@ -252,7 +254,6 @@ data "kubernetes_service" "traefik" {
   }
 }
 
-# Instalar GitLab Runner
 resource "helm_release" "gitlab_runner" {
   depends_on = [helm_release.gitlab, data.kubernetes_service.gitlab_webservice, data.kubernetes_service.traefik]
 
