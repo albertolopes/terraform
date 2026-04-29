@@ -27,7 +27,7 @@ variable "gitlab_version" {
 variable "chart_version" {
   description = "GitLab Helm chart version"
   type        = string
-  default     = "8.4.0"
+  default     = "9.0.0"
 }
 
 variable "minio_access_key" {
