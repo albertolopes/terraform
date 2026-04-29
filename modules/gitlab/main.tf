@@ -56,7 +56,7 @@ resource "kubernetes_secret_v1" "gitlab_postgres_secret" {
 
 resource "helm_release" "gitlab" {
   name             = "gitlab"
-  chart            = "${path.module}/gitlab" # Usando o Chart que você comitou localmente
+  chart            = "${path.module}/gitlab" # Aponta para a pasta local (Vendoring)
   version          = var.chart_version
   namespace        = kubernetes_namespace_v1.gitlab.metadata[0].name
   timeout          = 3600
@@ -83,6 +83,10 @@ resource "helm_release" "gitlab" {
           name: registry.${var.domain_name}
       image:
         tag: ${var.gitlab_version}
+
+      # CORREÇÃO MINIO: No GitLab 18, o enabled deve estar dentro do global
+      minio:
+        enabled: false
 
       initialRootPassword:
         secret: gitlab-root-secret
@@ -113,16 +117,15 @@ resource "helm_release" "gitlab" {
     # DESATIVAÇÃO DE SERVIÇOS INTERNOS
     certmanager: { install: false }
 
-    # AJUSTE PARA PASSAR NA VALIDAÇÃO DO HELM
+    # AJUSTE PARA PASSAR NA VALIDAÇÃO DO HELM (Mesmo desativado, exige e-mail)
     certmanager-issuer:
       install: false
-      email: "admin@${var.domain_name}" # E-mail fictício apenas para satisfazer o template
+      email: "admin@${var.domain_name}"
 
     nginx-ingress: { enabled: false }
     prometheus: { install: false }
     gitlab-exporter: { enabled: false }
     postgresql: { install: false }
-    minio: { enabled: false }
 
     redis:
       install: true
