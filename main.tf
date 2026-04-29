@@ -1,3 +1,5 @@
+#main.tf
+
 # --- Cloudflare Tunnel & Vercel DNS ---
 # Este módulo cria o túnel e já configura o DNS na Vercel
 module "cloudflare" {
@@ -99,12 +101,14 @@ module "minio" {
 module "gitlab" {
   source = "./modules/gitlab"
 
+  # Se o seu domínio é "exemplo.com", aqui vira "gitlab.exemplo.com"
   domain_name        = "gitlab.${var.domain_name}"
+  namespace          = "gitlab"
   root_password      = var.gitlab_root_password
   minio_access_key   = var.minio_access_key
   minio_secret_key   = var.minio_secret_key
-  redis_password     = var.redis_password
 
+  redis_password     = var.redis_password
 
   runner_authentication_token = var.gitlab_runner_token
 
@@ -113,5 +117,5 @@ module "gitlab" {
     kubernetes = kubernetes
   }
 
-  depends_on = [module.traefik, module.minio, module.redis, module.cloudflare, module.postgres]
+  depends_on = [module.traefik, module.minio, module.postgres, module.cloudflare]
 }

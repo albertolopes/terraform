@@ -1,3 +1,5 @@
+# modules/gitlab/versions.tf
+
 terraform {
   required_providers {
     kubectl = {

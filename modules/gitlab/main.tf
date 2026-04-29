@@ -4,14 +4,13 @@ resource "kubernetes_namespace_v1" "gitlab" {
   }
 }
 
+# --- SECRETS ---
 resource "kubernetes_secret_v1" "gitlab_minio_secret" {
   metadata {
     name      = "gitlab-minio-secret"
-    namespace = var.namespace
+    namespace = kubernetes_namespace_v1.gitlab.metadata[0].name
   }
-
   type = "Opaque"
-
   data = {
     "connection" = <<-EOT
 provider: AWS
@@ -24,45 +23,45 @@ EOT
   }
 }
 
-resource "kubernetes_secret_v1" "gitlab_root_secret" {
-  metadata {
-    name      = "gitlab-root-secret"
-    namespace = var.namespace
-  }
-
-  type = "Opaque"
-
-  data = {
-    "password" = var.root_password != null ? var.root_password : "changeme123"
-  }
-}
-
 resource "kubernetes_secret_v1" "gitlab_postgres_secret" {
   metadata {
     name      = "gitlab-postgres-secret"
-    namespace = var.namespace
+    namespace = kubernetes_namespace_v1.gitlab.metadata[0].name
   }
-
   type = "Opaque"
-
   data = {
     "password" = "postgres"
   }
 }
 
+resource "kubernetes_secret_v1" "gitlab_root_secret" {
+  metadata {
+    name      = "gitlab-root-secret"
+    namespace = kubernetes_namespace_v1.gitlab.metadata[0].name
+  }
+  type = "Opaque"
+  data = {
+    "password" = var.root_password != null ? var.root_password : "changeme123"
+  }
+}
+
+# --- HELM RELEASE GITLAB ---
 resource "helm_release" "gitlab" {
   name             = "gitlab"
   repository       = "https://charts.gitlab.io/"
   chart            = "gitlab"
-  version          = "8.4.0"
+  version          = var.chart_version
   namespace        = kubernetes_namespace_v1.gitlab.metadata[0].name
   timeout          = 3600
-  create_namespace = false
   wait             = true
   wait_for_jobs    = true
-  atomic           = false
   cleanup_on_fail  = true
-  max_history      = 3
+
+  depends_on = [
+    kubernetes_secret_v1.gitlab_postgres_secret,
+    kubernetes_secret_v1.gitlab_minio_secret,
+    kubernetes_secret_v1.gitlab_root_secret
+  ]
 
   values = [
     <<-YAML
@@ -74,7 +73,11 @@ resource "helm_release" "gitlab" {
       image:
         tag: ${var.gitlab_version}
 
-      # Configuração apenas do PostgreSQL Externo
+      # VINCULA A SENHA ROOT AQUI
+      initialRootPassword:
+        secret: gitlab-root-secret
+        key: password
+
       psql:
         host: postgres.postgres.svc.cluster.local
         port: 5433
@@ -85,130 +88,84 @@ resource "helm_release" "gitlab" {
           key: password
 
       appConfig:
-        lfs:
-          enabled: true
-          bucket: gitlab-lfs
-        artifacts:
-          enabled: true
-          bucket: gitlab-artifacts
-        packages:
-          enabled: true
-          bucket: gitlab-packages
-        uploads:
-          enabled: true
-          bucket: gitlab-uploads
-        registry:
-          enabled: true
-          bucket: gitlab-registry
         object_store:
           enabled: true
           proxy_download: true
           connection:
             secret: gitlab-minio-secret
             key: connection
+        lfs: { enabled: true, bucket: gitlab-lfs }
+        artifacts: { enabled: true, bucket: gitlab-artifacts }
+        packages: { enabled: true, bucket: gitlab-packages }
+        uploads: { enabled: true, bucket: gitlab-uploads }
+        registry: { enabled: true, bucket: gitlab-registry }
 
-    certmanager-issuer:
-      email: "admin@${var.domain_name}"
+    certmanager-issuer: { email: "admin@${var.domain_name}" }
+    certmanager: { install: false }
+    nginx: { enabled: false }
+    prometheus: { install: false }
+    gitlab-exporter: { enabled: false }
+    postgresql: { install: false }
 
-    certmanager:
-      install: false
-
-    nginx:
-      enabled: false
-
-    prometheus:
-      install: false
-
-    gitlab-exporter:
-      enabled: false
-
-    # PostgreSQL permanece desativado (usando global.psql externo)
-    postgresql:
-      install: false
-
-    # Redis AGORA SERÁ INSTALADO pelo chart (interno)
     redis:
       install: true
+      resources:
+        requests:
+          cpu: 200m
+          memory: 512Mi
 
     gitlab:
       webservice:
         enabled: true
         minReplicas: 1
         maxReplicas: 1
-        hpa:
-          enabled: false
-        env:
-          - name: PUMA_WORKERS
-            value: "2"
-          - name: GITLAB_RAILS_RACK_TIMEOUT
-            value: "600"
+        workerProcesses: 2
         resources:
           requests:
-            cpu: 2000m
-            memory: 2Gi
+            cpu: 1200m
+            memory: 3Gi
           limits:
-            cpu: 6000m
-            memory: 7.5Gi
+            cpu: 3000m
+            memory: 5Gi
         livenessProbe:
           initialDelaySeconds: 900
           periodSeconds: 30
-          timeoutSeconds: 10
-          failureThreshold: 15
         readinessProbe:
           initialDelaySeconds: 600
           periodSeconds: 10
-          timeoutSeconds: 5
-          failureThreshold: 15
 
-      gitlab-shell:
-        enabled: true
-        minReplicas: 1
-        maxReplicas: 2
-        resources:
-          requests:
-            cpu: 200m
-            memory: 256Mi
-          limits:
-            cpu: 1000m
-            memory: 512Mi
-
-      kas:
-        enabled: true
-        minReplicas: 1
-        maxReplicas: 2
-        resources:
-          requests:
-            cpu: 200m
-            memory: 256Mi
-          limits:
-            cpu: 1000m
-            memory: 1Gi
-        service:
-          externalPort: 8150
-          internalPort: 8156
-
-      toolbox:
-        enabled: true
+      sidekiq:
         resources:
           requests:
             cpu: 500m
-            memory: 1Gi
+            memory: 1.5Gi
           limits:
-            cpu: 3000m
-            memory: 3Gi
-        backups:
-          cron:
-            enabled: false
+            cpu: 1500m
+            memory: 2.5Gi
 
-      migrations:
-        enabled: true
+      gitlab-shell:
         resources:
           requests:
-            cpu: 1000m
-            memory: 2Gi
-          limits:
-            cpu: 3000m
-            memory: 4Gi
+            cpu: 100m
+            memory: 128Mi
+
+      kas:
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+
+      toolbox:
+        resources:
+          requests:
+            cpu: 200m
+            memory: 512Mi
+
+      migrations:
+        resources:
+          requests:
+            cpu: 800m
+            memory: 1.5Gi
 
     ingress:
       enabled: true
@@ -219,96 +176,38 @@ resource "helm_release" "gitlab" {
       configureCertmanager: false
       tls:
         enabled: true
-        secretName: nginx-certs
+        secretName: nginx-certs # Certifique-se que este secret existe!
     YAML
   ]
 }
 
-data "kubernetes_service" "gitlab_webservice" {
-  depends_on = [helm_release.gitlab]
-  metadata {
-    name      = "gitlab-webservice-default"
-    namespace = var.namespace
-  }
-}
-
-data "kubernetes_service" "traefik" {
-  metadata {
-    name      = "traefik"
-    namespace = "traefik"
-  }
-}
-
+# --- RUNNER ---
 resource "helm_release" "gitlab_runner" {
-  depends_on = [helm_release.gitlab, data.kubernetes_service.gitlab_webservice, data.kubernetes_service.traefik]
-
+  depends_on = [helm_release.gitlab]
   name       = "gitlab-runner"
   repository = "https://charts.gitlab.io/"
   chart      = "gitlab-runner"
-  namespace  = var.namespace
+  # Referência direta ao namespace do recurso anterior
+  namespace  = kubernetes_namespace_v1.gitlab.metadata[0].name
   version    = "0.70.0"
-  timeout    = 1800
-  create_namespace = false
-  wait       = true
-  atomic     = false
 
   values = [
     <<-YAML
-    gitlabUrl: http://gitlab-webservice-default.${var.namespace}.svc.cluster.local:8181
+    # Melhorado para usar interpolação do Terraform no nome do serviço
+    gitlabUrl: http://gitlab-webservice-default.${kubernetes_namespace_v1.gitlab.metadata[0].name}.svc.cluster.local:8181
     runnerToken: ${var.runner_authentication_token}
     checkInterval: 30
-    rbac:
-      create: true
-
-    hostAliases:
-      - ip: "${data.kubernetes_service.traefik.spec[0].cluster_ip}"
-        hostnames:
-          - "${var.domain_name}"
-          - "gitlab.${var.domain_name}"
-          - "registry.${var.domain_name}"
-
+    rbac: { create: true }
     runners:
       privileged: true
       executor: kubernetes
-      tags: "kubernetes"
-      runUntagged: true
-      secretName: gitlab-runner-secret
-      env:
-        CI_SERVER_URL: http://gitlab-webservice-default.${var.namespace}.svc.cluster.local:8181
-        CI_SERVER_HOST: gitlab-webservice-default.${var.namespace}.svc.cluster.local
-        CI_SERVER_PORT: "8181"
-        job_timeout: 3600
-        output_limit: 40960
-      kubernetes:
-        cpu_limit: "2"
-        memory_limit: "8Gi"
-        cpu_request: "2"
-        memory_request: "4Gi"
-        helper_cpu_limit: "2"
-        helper_memory_limit: "4Gi"
-        helper_cpu_request: "1"
-        helper_memory_request: "2Gi"
-        poll_timeout: 600
-        poll_interval: 10
       resources:
         requests:
-          cpu: 1000m
-          memory: 2Gi
+          cpu: 200m
+          memory: 512Mi
         limits:
-          cpu: 4
-          memory: 8Gi
+          cpu: 2000m
+          memory: 4Gi
     YAML
   ]
-}
-
-output "gitlab_url" {
-  value = "https://${var.domain_name}"
-}
-
-output "gitlab_status_command" {
-  value = "kubectl get pods -n ${var.namespace} -w"
-}
-
-output "gitlab_logs_command" {
-  value = "kubectl logs -n ${var.namespace} -l app=webservice --tail=100"
 }
