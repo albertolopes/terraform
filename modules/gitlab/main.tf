@@ -56,8 +56,7 @@ resource "kubernetes_secret_v1" "gitlab_postgres_secret" {
 
 resource "helm_release" "gitlab" {
   name             = "gitlab"
-  #repository       = "https://charts.gitlab.io/"
-  chart            = "${path.module}/gitlab" # Aponta para a pasta local baixada
+  chart            = "${path.module}/gitlab" # Usando o Chart que você comitou localmente
   version          = var.chart_version
   namespace        = kubernetes_namespace_v1.gitlab.metadata[0].name
   timeout          = 3600
@@ -113,7 +112,12 @@ resource "helm_release" "gitlab" {
 
     # DESATIVAÇÃO DE SERVIÇOS INTERNOS
     certmanager: { install: false }
-    certmanager-issuer: { install: false } # CORREÇÃO: Remove a obrigatoriedade do e-mail
+
+    # AJUSTE PARA PASSAR NA VALIDAÇÃO DO HELM
+    certmanager-issuer:
+      install: false
+      email: "admin@${var.domain_name}" # E-mail fictício apenas para satisfazer o template
+
     nginx-ingress: { enabled: false }
     prometheus: { install: false }
     gitlab-exporter: { enabled: false }
