@@ -55,16 +55,16 @@ resource "kubernetes_secret_v1" "gitlab_postgres_secret" {
 # --- HELM RELEASE GITLAB ---
 
 resource "helm_release" "gitlab" {
-  name             = "gitlab"
-  chart            = "${path.module}/gitlab" # Aponta para a pasta local (Vendoring)
-  version          = var.chart_version
-  namespace        = kubernetes_namespace_v1.gitlab.metadata[0].name
-  timeout          = 3600
-  wait             = true
-  wait_for_jobs    = true
-  cleanup_on_fail  = true
-  atomic           = false
-  max_history      = 3
+  name            = "gitlab"
+  chart           = "${path.module}/gitlab" # Aponta para a pasta local (Vendoring)
+  version         = var.chart_version
+  namespace       = kubernetes_namespace_v1.gitlab.metadata[0].name
+  timeout         = 3600
+  wait            = true
+  wait_for_jobs   = true
+  cleanup_on_fail = true
+  atomic          = false
+  max_history     = 3
 
   depends_on = [
     kubernetes_secret_v1.gitlab_postgres_secret,
@@ -133,11 +133,12 @@ resource "helm_release" "gitlab" {
         registry: public.ecr.aws
         repository: bitnami/redis
         tag: 7.2.4-debian-12-r10
+      metrics:
+        enabled: false
       resources:
         requests:
           cpu: 100m
           memory: 256Mi
-
     gitlab:
       webservice:
         minReplicas: 1
