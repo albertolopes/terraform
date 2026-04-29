@@ -56,8 +56,8 @@ resource "kubernetes_secret_v1" "gitlab_postgres_secret" {
 
 resource "helm_release" "gitlab" {
   name             = "gitlab"
-  repository       = "https://charts.gitlab.io/"
-  chart            = "gitlab"
+  #repository       = "https://charts.gitlab.io/" # Comentado para usar local
+  chart            = "${path.module}/gitlab"      # Aponta para a pasta local baixada
   version          = var.chart_version
   namespace        = kubernetes_namespace_v1.gitlab.metadata[0].name
   timeout          = 3600
@@ -111,7 +111,6 @@ resource "helm_release" "gitlab" {
         uploads: { enabled: true, bucket: gitlab-uploads }
         registry: { enabled: true, bucket: gitlab-registry }
 
-    # DESATIVAÇÃO DE SERVIÇOS INTERNOS (Para poupar CPU/RAM)
     certmanager: { install: false }
     nginx-ingress: { enabled: false }
     prometheus: { install: false }
@@ -137,11 +136,11 @@ resource "helm_release" "gitlab" {
         workerProcesses: 2
         resources:
           requests:
-            cpu: 1000m
-            memory: 2Gi
+            cpu: 1200m
+            memory: 3Gi
           limits:
-            cpu: 2000m
-            memory: 4Gi
+            cpu: 2500m
+            memory: 5Gi
         livenessProbe:
           initialDelaySeconds: 900
           periodSeconds: 30
@@ -180,7 +179,7 @@ resource "helm_release" "gitlab" {
       migrations:
         resources:
           requests:
-            cpu: 600m
+            cpu: 800m
             memory: 1Gi
 
     ingress:
