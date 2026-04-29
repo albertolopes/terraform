@@ -5,12 +5,15 @@ resource "kubernetes_namespace_v1" "gitlab" {
 }
 
 # --- SECRETS ---
+
 resource "kubernetes_secret_v1" "gitlab_minio_secret" {
   metadata {
     name      = "gitlab-minio-secret"
     namespace = kubernetes_namespace_v1.gitlab.metadata[0].name
   }
+
   type = "Opaque"
+
   data = {
     "connection" = <<-EOT
 provider: AWS
@@ -23,29 +26,34 @@ EOT
   }
 }
 
-resource "kubernetes_secret_v1" "gitlab_postgres_secret" {
-  metadata {
-    name      = "gitlab-postgres-secret"
-    namespace = kubernetes_namespace_v1.gitlab.metadata[0].name
-  }
-  type = "Opaque"
-  data = {
-    "password" = "postgres"
-  }
-}
-
 resource "kubernetes_secret_v1" "gitlab_root_secret" {
   metadata {
     name      = "gitlab-root-secret"
     namespace = kubernetes_namespace_v1.gitlab.metadata[0].name
   }
+
   type = "Opaque"
+
   data = {
     "password" = var.root_password != null ? var.root_password : "changeme123"
   }
 }
 
+resource "kubernetes_secret_v1" "gitlab_postgres_secret" {
+  metadata {
+    name      = "gitlab-postgres-secret"
+    namespace = kubernetes_namespace_v1.gitlab.metadata[0].name
+  }
+
+  type = "Opaque"
+
+  data = {
+    "password" = "postgres"
+  }
+}
+
 # --- HELM RELEASE GITLAB ---
+
 resource "helm_release" "gitlab" {
   name             = "gitlab"
   repository       = "https://charts.gitlab.io/"
@@ -56,6 +64,8 @@ resource "helm_release" "gitlab" {
   wait             = true
   wait_for_jobs    = true
   cleanup_on_fail  = true
+  atomic           = false
+  max_history      = 3
 
   depends_on = [
     kubernetes_secret_v1.gitlab_postgres_secret,
@@ -70,10 +80,11 @@ resource "helm_release" "gitlab" {
       hosts:
         domain: ${var.domain_name}
         https: true
+        registry:
+          name: registry.${var.domain_name}
       image:
         tag: ${var.gitlab_version}
 
-      # VINCULA A SENHA ROOT AQUI
       initialRootPassword:
         secret: gitlab-root-secret
         key: password
@@ -100,48 +111,53 @@ resource "helm_release" "gitlab" {
         uploads: { enabled: true, bucket: gitlab-uploads }
         registry: { enabled: true, bucket: gitlab-registry }
 
-    certmanager-issuer: { email: "admin@${var.domain_name}" }
+    # DESATIVAÇÃO DE SERVIÇOS INTERNOS (Para poupar CPU/RAM)
     certmanager: { install: false }
-    nginx: { enabled: false }
+    nginx-ingress: { enabled: false }
     prometheus: { install: false }
     gitlab-exporter: { enabled: false }
     postgresql: { install: false }
+    minio: { enabled: false }
 
     redis:
       install: true
+      image:
+        registry: public.ecr.aws
+        repository: bitnami/redis
+        tag: 7.2.4-debian-12-r10
       resources:
         requests:
-          cpu: 200m
-          memory: 512Mi
+          cpu: 100m
+          memory: 256Mi
 
     gitlab:
       webservice:
-        enabled: true
         minReplicas: 1
         maxReplicas: 1
         workerProcesses: 2
         resources:
           requests:
-            cpu: 1200m
-            memory: 3Gi
+            cpu: 1000m
+            memory: 2Gi
           limits:
-            cpu: 3000m
-            memory: 5Gi
+            cpu: 2000m
+            memory: 4Gi
         livenessProbe:
           initialDelaySeconds: 900
           periodSeconds: 30
         readinessProbe:
           initialDelaySeconds: 600
           periodSeconds: 10
+          timeoutSeconds: 10
 
       sidekiq:
         resources:
           requests:
-            cpu: 500m
-            memory: 1.5Gi
+            cpu: 400m
+            memory: 1Gi
           limits:
-            cpu: 1500m
-            memory: 2.5Gi
+            cpu: 1000m
+            memory: 2Gi
 
       gitlab-shell:
         resources:
@@ -158,14 +174,14 @@ resource "helm_release" "gitlab" {
       toolbox:
         resources:
           requests:
-            cpu: 200m
+            cpu: 100m
             memory: 512Mi
 
       migrations:
         resources:
           requests:
-            cpu: 800m
-            memory: 1.5Gi
+            cpu: 600m
+            memory: 1Gi
 
     ingress:
       enabled: true
@@ -176,24 +192,24 @@ resource "helm_release" "gitlab" {
       configureCertmanager: false
       tls:
         enabled: true
-        secretName: nginx-certs # Certifique-se que este secret existe!
+        secretName: nginx-certs
     YAML
   ]
 }
 
-# --- RUNNER ---
+# --- GITLAB RUNNER ---
+
 resource "helm_release" "gitlab_runner" {
   depends_on = [helm_release.gitlab]
+
   name       = "gitlab-runner"
   repository = "https://charts.gitlab.io/"
   chart      = "gitlab-runner"
-  # Referência direta ao namespace do recurso anterior
   namespace  = kubernetes_namespace_v1.gitlab.metadata[0].name
   version    = "0.70.0"
 
   values = [
     <<-YAML
-    # Melhorado para usar interpolação do Terraform no nome do serviço
     gitlabUrl: http://gitlab-webservice-default.${kubernetes_namespace_v1.gitlab.metadata[0].name}.svc.cluster.local:8181
     runnerToken: ${var.runner_authentication_token}
     checkInterval: 30
@@ -205,9 +221,24 @@ resource "helm_release" "gitlab_runner" {
         requests:
           cpu: 200m
           memory: 512Mi
-        limits:
-          cpu: 2000m
-          memory: 4Gi
     YAML
   ]
+}
+
+# --- DATA & OUTPUTS ---
+
+data "kubernetes_service" "gitlab_webservice" {
+  depends_on = [helm_release.gitlab]
+  metadata {
+    name      = "gitlab-webservice-default"
+    namespace = kubernetes_namespace_v1.gitlab.metadata[0].name
+  }
+}
+
+output "gitlab_url" {
+  value = "https://${var.domain_name}"
+}
+
+output "gitlab_status_command" {
+  value = "kubectl get pods -n ${var.namespace} -w"
 }
