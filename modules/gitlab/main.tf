@@ -56,8 +56,8 @@ resource "kubernetes_secret_v1" "gitlab_postgres_secret" {
 
 resource "helm_release" "gitlab" {
   name             = "gitlab"
-  #repository       = "https://charts.gitlab.io/" # Comentado para usar local
-  chart            = "${path.module}/gitlab"      # Aponta para a pasta local baixada
+  #repository       = "https://charts.gitlab.io/"
+  chart            = "${path.module}/gitlab" # Aponta para a pasta local baixada
   version          = var.chart_version
   namespace        = kubernetes_namespace_v1.gitlab.metadata[0].name
   timeout          = 3600
@@ -111,7 +111,9 @@ resource "helm_release" "gitlab" {
         uploads: { enabled: true, bucket: gitlab-uploads }
         registry: { enabled: true, bucket: gitlab-registry }
 
+    # DESATIVAÇÃO DE SERVIÇOS INTERNOS
     certmanager: { install: false }
+    certmanager-issuer: { install: false } # CORREÇÃO: Remove a obrigatoriedade do e-mail
     nginx-ingress: { enabled: false }
     prometheus: { install: false }
     gitlab-exporter: { enabled: false }
@@ -152,8 +154,8 @@ resource "helm_release" "gitlab" {
       sidekiq:
         resources:
           requests:
-            cpu: 400m
-            memory: 1Gi
+            cpu: 500m
+            memory: 1.5Gi
           limits:
             cpu: 1000m
             memory: 2Gi
@@ -180,7 +182,7 @@ resource "helm_release" "gitlab" {
         resources:
           requests:
             cpu: 800m
-            memory: 1Gi
+            memory: 1.5Gi
 
     ingress:
       enabled: true
