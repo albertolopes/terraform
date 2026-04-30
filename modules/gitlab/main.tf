@@ -107,6 +107,7 @@ resource "helm_release" "gitlab" {
           secret: gitlab-postgres-secret
           key: password
 
+    # Desativa componentes internos para usar os externos (ou economizar RAM)
     certmanager: { install: false }
     certmanager-issuer: { install: false }
     redis: { install: false }
@@ -115,6 +116,7 @@ resource "helm_release" "gitlab" {
     prometheus: { install: false }
     gitlab-runner: { install: false }
 
+    # Otimização de recursos para k3d local
     gitlab:
       webservice:
         minReplicas: 1
