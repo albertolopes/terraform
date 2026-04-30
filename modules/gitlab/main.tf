@@ -77,9 +77,6 @@ resource "helm_release" "gitlab" {
     <<-YAML
     global:
       edition: ce
-      common:
-        labels:
-          app: gitlab
       ingress:
         enabled: true
         class: traefik
