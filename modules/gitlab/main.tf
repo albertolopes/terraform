@@ -1,6 +1,3 @@
-# --- SECRETS ---
-# Agora todos usam var.namespace vindo do root
-
 resource "kubernetes_secret_v1" "gitlab_minio_secret" {
   metadata {
     name      = "gitlab-minio-secret"
@@ -43,7 +40,21 @@ resource "kubernetes_secret_v1" "gitlab_postgres_secret" {
   type = "Opaque"
 
   data = {
-    "password" = "postgres" # Certifique-se que essa é a senha do seu módulo Postgres
+    "password" = "postgres"
+  }
+}
+
+# Secret com a senha do Redis (O GitLab precisa ler isso no próprio namespace)
+resource "kubernetes_secret_v1" "gitlab_redis_password" {
+  metadata {
+    name      = "gitlab-redis-password"
+    namespace = var.namespace
+  }
+
+  type = "Opaque"
+
+  data = {
+    "password" = var.redis_password
   }
 }
 
@@ -65,7 +76,8 @@ resource "helm_release" "gitlab" {
   depends_on = [
     kubernetes_secret_v1.gitlab_postgres_secret,
     kubernetes_secret_v1.gitlab_minio_secret,
-    kubernetes_secret_v1.gitlab_root_secret
+    kubernetes_secret_v1.gitlab_root_secret,
+    kubernetes_secret_v1.gitlab_redis_password # Nova dependência
   ]
 
   values = [
@@ -97,6 +109,14 @@ resource "helm_release" "gitlab" {
         secret: gitlab-root-secret
         key: password
 
+      # --- APONTAMENTO PARA O REDIS EXTERNO ---
+      redis:
+        host: redis.redis.svc.cluster.local # Aponta para o seu Service no namespace do redis
+        port: 6379
+        password:
+          secret: gitlab-redis-password
+          key: password
+
       psql:
         host: postgres.postgres.svc.cluster.local
         port: 5433
@@ -127,12 +147,9 @@ resource "helm_release" "gitlab" {
     postgresql: { install: false }
     gitlab-runner: { install: false }
 
+    # --- DESABILITA O REDIS INTERNO ---
     redis:
-      install: true
-      resources:
-        requests:
-          cpu: 100m
-          memory: 256Mi
+      install: false
 
     gitlab:
       webservice:
