@@ -1,4 +1,4 @@
-# --- SECRETS ---
+# --- SECRETS (Agora com base64encode para evitar erros de provider) ---
 
 resource "kubernetes_secret_v1" "gitlab_minio_secret" {
   metadata {
@@ -6,8 +6,8 @@ resource "kubernetes_secret_v1" "gitlab_minio_secret" {
     namespace = var.namespace
   }
   type = "Opaque"
-  string_data = {
-    "connection" = <<-EOT
+  data = {
+    "connection" = base64encode(<<-EOT
 provider: AWS
 region: us-east-1
 aws_access_key_id: ${var.minio_access_key}
@@ -15,6 +15,7 @@ aws_secret_access_key: ${var.minio_secret_key}
 endpoint: http://minio.minio.svc.cluster.local:9000
 path_style: true
 EOT
+    )
   }
 }
 
@@ -24,8 +25,8 @@ resource "kubernetes_secret_v1" "gitlab_root_secret" {
     namespace = var.namespace
   }
   type = "Opaque"
-  string_data = {
-    "password" = var.root_password != null ? var.root_password : "changeme123"
+  data = {
+    "password" = base64encode(var.root_password != null ? var.root_password : "changeme123")
   }
 }
 
@@ -35,8 +36,8 @@ resource "kubernetes_secret_v1" "gitlab_postgres_secret" {
     namespace = var.namespace
   }
   type = "Opaque"
-  string_data = {
-    "password" = "postgres" # Senha do seu banco PostgreSQL externo
+  data = {
+    "password" = base64encode("postgres")
   }
 }
 
@@ -46,8 +47,8 @@ resource "kubernetes_secret_v1" "gitlab_redis_password" {
     namespace = var.namespace
   }
   type = "Opaque"
-  string_data = {
-    "password" = var.redis_password # A senha real do seu Redis Alpine
+  data = {
+    "password" = base64encode(var.redis_password)
   }
 }
 
@@ -106,7 +107,6 @@ resource "helm_release" "gitlab" {
           secret: gitlab-postgres-secret
           key: password
 
-    # Desativação de sub-charts e recursos extras para rodar leve
     certmanager: { install: false }
     certmanager-issuer: { install: false }
     redis: { install: false }
@@ -115,7 +115,6 @@ resource "helm_release" "gitlab" {
     prometheus: { install: false }
     gitlab-runner: { install: false }
 
-    # Configuração de réplicas e recursos (Otimizado para k3d)
     gitlab:
       webservice:
         minReplicas: 1
