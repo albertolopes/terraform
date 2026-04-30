@@ -6,7 +6,7 @@ resource "kubernetes_secret_v1" "gitlab_minio_secret" {
     namespace = var.namespace
   }
   type = "Opaque"
-  data = {
+  string_data = {
     "connection" = <<-EOT
 provider: AWS
 region: us-east-1
@@ -24,7 +24,7 @@ resource "kubernetes_secret_v1" "gitlab_root_secret" {
     namespace = var.namespace
   }
   type = "Opaque"
-  data = {
+  string_data = {
     "password" = var.root_password != null ? var.root_password : "changeme123"
   }
 }
@@ -35,8 +35,8 @@ resource "kubernetes_secret_v1" "gitlab_postgres_secret" {
     namespace = var.namespace
   }
   type = "Opaque"
-  data = {
-    "password" = "postgres"
+  string_data = {
+    "password" = "postgres" # Senha do seu banco PostgreSQL externo
   }
 }
 
@@ -46,8 +46,8 @@ resource "kubernetes_secret_v1" "gitlab_redis_password" {
     namespace = var.namespace
   }
   type = "Opaque"
-  data = {
-    "password" = var.redis_password
+  string_data = {
+    "password" = var.redis_password # A senha real do seu Redis Alpine
   }
 }
 
@@ -80,7 +80,7 @@ resource "helm_release" "gitlab" {
       ingress:
         enabled: true
         class: traefik
-        configureCertmanager: false # DESATIVADO AQUI
+        configureCertmanager: false
         annotations:
           kubernetes.io/ingress.class: "traefik"
           traefik.ingress.kubernetes.io/router.middlewares: "${var.namespace}-traefik-force-https-header@kubernetescrd"
@@ -106,52 +106,67 @@ resource "helm_release" "gitlab" {
           secret: gitlab-postgres-secret
           key: password
 
-    # --- DESATIVAR CERT-MANAGER E ISSUER (O FIX ESTÁ AQUI) ---
+    # Desativação de sub-charts e recursos extras para rodar leve
     certmanager: { install: false }
-    certmanager-issuer: { install: false } # Desativa explicitamente o sub-chart
-
+    certmanager-issuer: { install: false }
     redis: { install: false }
     postgresql: { install: false }
     nginx-ingress: { enabled: false }
     prometheus: { install: false }
     gitlab-runner: { install: false }
 
-    # --- RECURSOS PARA O K3D AGUENTAR O SETUP ---
+    # Configuração de réplicas e recursos (Otimizado para k3d)
     gitlab:
+      webservice:
+        minReplicas: 1
+        maxReplicas: 1
+        resources:
+          requests:
+            cpu: 800m
+            memory: 2Gi
+          limits:
+            cpu: 1500m
+            memory: 4Gi
+
+      sidekiq:
+        minReplicas: 1
+        maxReplicas: 1
+        resources:
+          requests:
+            cpu: 300m
+            memory: 1Gi
+          limits:
+            cpu: 800m
+            memory: 2Gi
+
       toolbox:
         resources:
           requests:
-            cpu: 500m
-            memory: 1.5Gi
-          limits:
-            cpu: 1000m
-            memory: 2.5Gi
-
-      webservice:
-        resources:
-          requests:
-            cpu: 1000m
-            memory: 2.5Gi
-          limits:
-            cpu: 2000m
-            memory: 5Gi
-
-      sidekiq:
-        resources:
-          requests:
-            cpu: 500m
-            memory: 1.5Gi
+            cpu: 300m
+            memory: 1Gi
 
       gitaly:
         resources:
           requests:
-            cpu: 500m
-            memory: 1.5Gi
+            cpu: 400m
+            memory: 1Gi
         persistence:
           enabled: true
           storageClass: "local-path"
           size: 50Gi
 
+      gitlab-shell:
+        minReplicas: 1
+        maxReplicas: 1
+
+    gitlab-kas:
+      minReplicas: 1
+      maxReplicas: 1
+
+    registry:
+      hpa:
+        minReplicas: 1
+        maxReplicas: 1
     YAML
   ]
 }
