@@ -27,6 +27,7 @@ module "cloudflare" {
   domain_name           = var.domain_name
   cloudflare_account_id = var.cloudflare_account_id
   cloudflare_zone_id    = var.cloudflare_zone_id
+  tunnel_name           = "k3d-tunnel" # Verifique se esta var existe no modulo
 
   services = [
     { hostname = "*", service = "http://traefik.traefik.svc.cluster.local:80" },
@@ -46,7 +47,7 @@ module "cloudflare" {
   depends_on = [module.k3d_cluster]
 }
 
-# --- Databases & Storage (A Fundação) ---
+# --- Databases & Storage ---
 
 module "postgres" {
   source = "./modules/postgres"
@@ -85,9 +86,8 @@ module "traefik" {
   depends_on = [module.k3d_cluster, module.networking]
 }
 
-# --- ESTRUTURA PARA O GITLAB (O Ajuste Mestre) ---
+# --- ESTRUTURA PARA O GITLAB ---
 
-# 1. Criamos o Namespace explicitamente no root
 resource "kubernetes_namespace_v1" "gitlab" {
   metadata {
     name = "gitlab"
@@ -95,7 +95,6 @@ resource "kubernetes_namespace_v1" "gitlab" {
   depends_on = [module.k3d_cluster]
 }
 
-# 2. Criamos o Middleware de HTTPS ANTES do GitLab
 resource "kubernetes_manifest" "traefik_middleware" {
   manifest = {
     "apiVersion" = "traefik.io/v1alpha1"
@@ -116,19 +115,25 @@ resource "kubernetes_manifest" "traefik_middleware" {
   depends_on = [kubernetes_namespace_v1.gitlab]
 }
 
-# 3. Módulo GitLab (Agora dependente da rede pronta)
+# Módulo GitLab (Ajustado com os argumentos faltantes)
 module "gitlab" {
   source = "./modules/gitlab"
 
-  domain_name        = "gitlab.${var.domain_name}"
-  namespace          = kubernetes_namespace_v1.gitlab.metadata[0].name # Passa o nome do NS criado acima
-  root_password      = var.gitlab_root_password
-  minio_access_key   = var.minio_access_key
-  minio_secret_key   = var.minio_secret_key
-  redis_password     = var.redis_password
-  runner_authentication_token = var.gitlab_runner_token
+  # Argumentos obrigatórios que estavam faltando:
+  chart_version     = "8.6.0"                # Versão do Chart (ajuste se necessário)
+  postgres_password = var.postgres_password  # Passando a senha global da raiz
 
+  # Configurações de domínio e rede
+  domain_name       = "gitlab.${var.domain_name}"
+  namespace         = kubernetes_namespace_v1.gitlab.metadata[0].name
   trusted_proxies    = ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "127.0.0.1"]
+
+  # Credenciais e Tokens
+  root_password               = var.gitlab_root_password
+  minio_access_key            = var.minio_access_key
+  minio_secret_key            = var.minio_secret_key
+  redis_password              = var.redis_password
+  runner_authentication_token = var.gitlab_runner_token
 
   providers = {
     helm       = helm
