@@ -1,16 +1,12 @@
-#main.tf
+# main.tf
 
 # --- Cloudflare Tunnel & Vercel DNS ---
-# Este módulo cria o túnel e já configura o DNS na Vercel
 module "cloudflare" {
   source                = "./modules/cloudflare"
   domain_name           = var.domain_name
   cloudflare_account_id = var.cloudflare_account_id
   cloudflare_zone_id    = var.cloudflare_zone_id
 
-  # Apontamos todos os subdomínios para o Traefik
-  # O uso do "*" (wildcard) permite que novos serviços criados via GitLab pipelines 
-  # funcionem automaticamente sem precisar mexer no Terraform.
   services = [
     { hostname = "*", service = "http://traefik.traefik.svc.cluster.local:80" },
     { hostname = "traefik", service = "http://traefik.traefik.svc.cluster.local:80" },
@@ -97,11 +93,33 @@ module "minio" {
   depends_on = [module.k3d_cluster]
 }
 
+# --- Middleware para resolver Erro 422 (CSRF) ---
+# Este recurso garante que o Traefik informe ao GitLab que a conexão é HTTPS
+resource "kubernetes_manifest" "traefik_middleware" {
+  manifest = {
+    "apiVersion" = "traefik.io/v1alpha1"
+    "kind"       = "Middleware"
+    "metadata" = {
+      "name"      = "traefik-force-https-header"
+      "namespace" = "gitlab"
+    }
+    "spec" = {
+      "headers" = {
+        "customRequestHeaders" = {
+          "X-Forwarded-Proto" = "https"
+          "X-Forwarded-Ssl"   = "on"
+        }
+      }
+    }
+  }
+  # Garante que o cluster e o namespace já existem
+  depends_on = [module.k3d_cluster]
+}
+
 # --- GitLab ---
 module "gitlab" {
   source = "./modules/gitlab"
 
-  # Se o seu domínio é "exemplo.com", aqui vira "gitlab.exemplo.com"
   domain_name        = "gitlab.${var.domain_name}"
   namespace          = "gitlab"
   root_password      = var.gitlab_root_password
@@ -117,5 +135,12 @@ module "gitlab" {
     kubernetes = kubernetes
   }
 
-  depends_on = [module.traefik, module.minio, module.postgres, module.cloudflare]
+  # Adicionado o middleware no depends_on para evitar erro 422 no boot
+  depends_on = [
+    module.traefik,
+    module.minio,
+    module.postgres,
+    module.cloudflare,
+    kubernetes_manifest.traefik_middleware
+  ]
 }
