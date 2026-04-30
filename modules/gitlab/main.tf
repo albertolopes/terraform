@@ -55,10 +55,10 @@ resource "kubernetes_secret_v1" "gitlab_postgres_secret" {
 # --- HELM RELEASE GITLAB ---
 
 resource "helm_release" "gitlab" {
-  name            = "gitlab"
-  chart           = "${path.module}/gitlab"
-  version         = var.chart_version
-  namespace       = kubernetes_namespace_v1.gitlab.metadata[0].name
+  name      = "gitlab"
+  chart     = "${path.module}/gitlab"
+  version   = var.chart_version
+  namespace = kubernetes_namespace_v1.gitlab.metadata[0].name
 
   timeout         = 600
   wait            = false
@@ -188,6 +188,20 @@ resource "helm_release" "gitlab" {
         minReplicas: 1
         maxReplicas: 1
 
+      gitaly:
+        securityContext:
+          runAsUser: 1000
+          fsGroup: 1000
+        persistence:
+          enabled: true
+          # CORREÇÃO: k3d usa local-path, não do-block-storage
+          storageClass: "local-path"
+          size: 20Gi
+        resources:
+          requests:
+            cpu: 200m
+            memory: 1Gi
+
     registry:
       hpa:
         minReplicas: 1
@@ -219,7 +233,7 @@ resource "helm_release" "gitlab_runner" {
   namespace  = kubernetes_namespace_v1.gitlab.metadata[0].name
   version    = "0.70.0"
 
-  wait       = false
+  wait = false
 
   values = [
     <<-YAML
