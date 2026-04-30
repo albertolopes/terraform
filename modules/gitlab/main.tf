@@ -60,12 +60,9 @@ resource "helm_release" "gitlab" {
   version         = var.chart_version
   namespace       = kubernetes_namespace_v1.gitlab.metadata[0].name
 
-  # --- CONFIGURAÇÃO DE TIMEOUT E ESPERA ---
-  timeout         = 600    # 10 minutos para o upload dos manifestos
-  wait            = false  # Terraform libera o terminal sem esperar os pods
-  wait_for_jobs   = false  # Não trava esperando as migrations
-  # ----------------------------------------
-
+  timeout         = 600
+  wait            = false # Fire and forget para não travar no boot lento
+  wait_for_jobs   = false
   cleanup_on_fail = true
   atomic          = false
   max_history     = 3
@@ -132,7 +129,6 @@ resource "helm_release" "gitlab" {
     prometheus: { install: false }
     gitlab-exporter: { enabled: false }
     postgresql: { install: false }
-
     gitlab-runner: { install: false }
 
     redis:
@@ -243,8 +239,7 @@ resource "helm_release" "gitlab_runner" {
   namespace  = kubernetes_namespace_v1.gitlab.metadata[0].name
   version    = "0.70.0"
 
-  # Também desativamos a espera aqui para não travar o Terraform
-  wait       = false
+  wait       = false 
 
   values = [
     <<-YAML
