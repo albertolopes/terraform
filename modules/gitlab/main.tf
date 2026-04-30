@@ -1,4 +1,4 @@
-# --- SECRETS (Agora com base64encode para evitar erros de provider) ---
+# --- SECRETS ---
 
 resource "kubernetes_secret_v1" "gitlab_minio_secret" {
   metadata {
@@ -37,7 +37,7 @@ resource "kubernetes_secret_v1" "gitlab_postgres_secret" {
   }
   type = "Opaque"
   data = {
-    "password" = base64encode("postgres")
+    "password" = base64encode(var.postgres_password)
   }
 }
 
@@ -189,8 +189,4 @@ resource "helm_release" "gitlab_runner" {
       executor: kubernetes
     YAML
   ]
-}
-
-output "gitlab_url" {
-  value = "https://${var.domain_name}"
 }
