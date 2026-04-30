@@ -76,10 +76,15 @@ resource "helm_release" "gitlab" {
     <<-YAML
     global:
       edition: ce
+      # ESSENCIAL: Força a classe Traefik globalmente para todos os componentes
+      ingress:
+        enabled: true
+        class: traefik
+        configureCertmanager: false
       hosts:
         domain: ${var.domain_name}
         gitlab:
-          name: ${var.domain_name} # Mata o erro do example.org
+          name: ${var.domain_name}
         https: true
         registry:
           name: registry.${var.domain_name}
@@ -109,7 +114,6 @@ resource "helm_release" "gitlab" {
           connection:
             secret: gitlab-minio-secret
             key: connection
-        # Certifique-se que esses buckets existem no seu MinIO
         lfs: { enabled: true, bucket: gitlab-lfs }
         artifacts: { enabled: true, bucket: gitlab-artifacts }
         packages: { enabled: true, bucket: gitlab-packages }
@@ -144,19 +148,19 @@ resource "helm_release" "gitlab" {
         minReplicas: 1
         maxReplicas: 1
         workerProcesses: 2
-        workerTimeout: 1800 #Puma timeout
+        workerTimeout: 1800
         resources:
           requests:
             cpu: 800m
-            memory: 2Gi # Corrigido de 1500Gi
+            memory: 2Gi
           limits:
             cpu: 2500m
             memory: 5Gi
         livenessProbe:
-          initialDelaySeconds: 200
+          initialDelaySeconds: 300 # Aumentado levemente para estabilizar
           periodSeconds: 30
         readinessProbe:
-          initialDelaySeconds: 120
+          initialDelaySeconds: 150 # Aumentado levemente
           periodSeconds: 10
           timeoutSeconds: 10
 
@@ -193,10 +197,12 @@ resource "helm_release" "gitlab" {
             cpu: 500m
             memory: 1Gi
 
+    # Reforço das anotações do Ingress para garantir que o Traefik ignore o TLS interno se necessário
     ingress:
       enabled: true
       class: traefik
       annotations:
+        kubernetes.io/ingress.class: traefik
         kubernetes.io/ingress.provider: traefik
         traefik.ingress.kubernetes.io/router.middlewares: traefik-force-https-header@kubernetescrd
       configureCertmanager: false
