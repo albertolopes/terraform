@@ -1,11 +1,11 @@
+# --- SECRETS (Mantidos) ---
+
 resource "kubernetes_secret_v1" "gitlab_minio_secret" {
   metadata {
     name      = "gitlab-minio-secret"
     namespace = var.namespace
   }
-
   type = "Opaque"
-
   data = {
     "connection" = <<-EOT
 provider: AWS
@@ -23,9 +23,7 @@ resource "kubernetes_secret_v1" "gitlab_root_secret" {
     name      = "gitlab-root-secret"
     namespace = var.namespace
   }
-
   type = "Opaque"
-
   data = {
     "password" = var.root_password != null ? var.root_password : "changeme123"
   }
@@ -36,23 +34,18 @@ resource "kubernetes_secret_v1" "gitlab_postgres_secret" {
     name      = "gitlab-postgres-secret"
     namespace = var.namespace
   }
-
   type = "Opaque"
-
   data = {
     "password" = "postgres"
   }
 }
 
-# Secret com a senha do Redis (O GitLab precisa ler isso no próprio namespace)
 resource "kubernetes_secret_v1" "gitlab_redis_password" {
   metadata {
     name      = "gitlab-redis-password"
     namespace = var.namespace
   }
-
   type = "Opaque"
-
   data = {
     "password" = var.redis_password
   }
@@ -66,7 +59,7 @@ resource "helm_release" "gitlab" {
   version   = var.chart_version
   namespace = var.namespace
 
-  timeout         = 1200 # Aumentado para 20min (GitLab no k3d é pesado)
+  timeout         = 1800 # Aumentado para 30min
   wait            = false
   wait_for_jobs   = false
   cleanup_on_fail = true
@@ -77,7 +70,7 @@ resource "helm_release" "gitlab" {
     kubernetes_secret_v1.gitlab_postgres_secret,
     kubernetes_secret_v1.gitlab_minio_secret,
     kubernetes_secret_v1.gitlab_root_secret,
-    kubernetes_secret_v1.gitlab_redis_password # Nova dependência
+    kubernetes_secret_v1.gitlab_redis_password
   ]
 
   values = [
@@ -87,8 +80,6 @@ resource "helm_release" "gitlab" {
       ingress:
         enabled: true
         class: traefik
-        provider: ""
-        configureCertmanager: false
         annotations:
           kubernetes.io/ingress.class: "traefik"
           traefik.ingress.kubernetes.io/router.middlewares: "${var.namespace}-traefik-force-https-header@kubernetescrd"
@@ -97,21 +88,9 @@ resource "helm_release" "gitlab" {
         gitlab:
           name: ${var.domain_name}
         https: true
-        registry:
-          name: registry.${var.domain_name}
-      image:
-        tag: ${var.gitlab_version}
 
-      minio:
-        enabled: false
-
-      initialRootPassword:
-        secret: gitlab-root-secret
-        key: password
-
-      # --- APONTAMENTO PARA O REDIS EXTERNO ---
       redis:
-        host: redis.redis.svc.cluster.local # Aponta para o seu Service no namespace do redis
+        host: redis.redis.svc.cluster.local
         port: 6379
         password:
           secret: gitlab-redis-password
@@ -126,62 +105,57 @@ resource "helm_release" "gitlab" {
           secret: gitlab-postgres-secret
           key: password
 
-      appConfig:
-        trusted_proxies: ${jsonencode(var.trusted_proxies)}
-        object_store:
-          enabled: true
-          proxy_download: true
-          connection:
-            secret: gitlab-minio-secret
-            key: connection
-        lfs: { enabled: true, bucket: gitlab-lfs }
-        artifacts: { enabled: true, bucket: gitlab-artifacts }
-        packages: { enabled: true, bucket: gitlab-packages }
-        uploads: { enabled: true, bucket: gitlab-uploads }
-        registry: { enabled: true, bucket: gitlab-registry }
-
-    certmanager: { install: false }
+    # --- DESATIVAR COMPONENTES INTERNOS ---
+    redis: { install: false }
+    postgresql: { install: false }
     nginx-ingress: { enabled: false }
     prometheus: { install: false }
-    gitlab-exporter: { enabled: false }
-    postgresql: { install: false }
     gitlab-runner: { install: false }
 
-    # --- DESABILITA O REDIS INTERNO ---
-    redis:
-      install: false
-
+    # --- TURBINANDO OS RECURSOS ---
     gitlab:
-      webservice:
-        extraEnv:
-          GITLAB_HTTPS: "true"
-          RAILS_TRUSTED_PROXIES: "${join(",", var.trusted_proxies)}"
-        minReplicas: 1
-        maxReplicas: 1
-        workerTimeout: 1800
+      toolbox: # ESSENCIAL PARA AS MIGRATIONS
         resources:
           requests:
-            cpu: 800m
-            memory: 2Gi
-        livenessProbe:
-          initialDelaySeconds: 300
-        readinessProbe:
-          initialDelaySeconds: 150
+            cpu: 500m
+            memory: 1.5Gi
+          limits:
+            cpu: 1000m
+            memory: 2.5Gi
+
+      webservice:
+        minReplicas: 1
+        maxReplicas: 1
+        resources:
+          requests:
+            cpu: 1000m
+            memory: 2.5Gi
+          limits:
+            cpu: 2000m
+            memory: 5Gi
 
       sidekiq:
         resources:
           requests:
-            cpu: 300m
-            memory: 1Gi
+            cpu: 500m
+            memory: 1.5Gi
+          limits:
+            cpu: 1000m
+            memory: 2Gi
 
       gitaly:
-        securityContext:
-          runAsUser: 1000
-          fsGroup: 1000
+        resources:
+          requests:
+            cpu: 500m
+            memory: 1.5Gi
+          limits:
+            cpu: 1500m
+            memory: 3Gi
         persistence:
           enabled: true
           storageClass: "local-path"
-          size: 100Gi
+          size: 50Gi
+
     YAML
   ]
 }
@@ -190,7 +164,6 @@ resource "helm_release" "gitlab" {
 
 resource "helm_release" "gitlab_runner" {
   depends_on = [helm_release.gitlab]
-
   name       = "gitlab-runner"
   repository = "https://charts.gitlab.io/"
   chart      = "gitlab-runner"
@@ -207,8 +180,6 @@ resource "helm_release" "gitlab_runner" {
     YAML
   ]
 }
-
-# --- OUTPUTS ---
 
 output "gitlab_url" {
   value = "https://${var.domain_name}"
