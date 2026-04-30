@@ -1,21 +1,23 @@
+# modules/cloudflare/outputs.tf
+
 output "tunnel_id" {
-  description = "O ID único do túnel criado na Cloudflare"
-  value       = cloudflare_tunnel.k3d_tunnel.id
+  description = "O ID único do túnel criado na Cloudflare Zero Trust"
+  value       = cloudflare_zero_trust_tunnel_cloudflared.k3d_tunnel.id
 }
 
 output "tunnel_token" {
   description = "O token de autenticação do túnel. Deve ser passado para o Deployment do cloudflared no K8s."
-  value       = cloudflare_tunnel.k3d_tunnel.tunnel_token
+  value       = cloudflare_zero_trust_tunnel_cloudflared.k3d_tunnel.tunnel_token
   sensitive   = true
 }
 
 output "tunnel_cname_target" {
   description = "O endereço de destino para os registros CNAME (.cfargotunnel.com)"
-  value       = "${cloudflare_tunnel.k3d_tunnel.id}.cfargotunnel.com"
+  value       = "${cloudflare_zero_trust_tunnel_cloudflared.k3d_tunnel.id}.cfargotunnel.com"
 }
 
 output "exposed_urls" {
-  description = "Lista das URLs públicas que foram configuradas na Vercel"
+  description = "Lista das URLs públicas que foram configuradas via Túnel Cloudflare"
   value       = [for s in var.services : "https://${s.hostname}.${var.domain_name}"]
 }
 
