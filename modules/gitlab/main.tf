@@ -1,15 +1,10 @@
-resource "kubernetes_namespace_v1" "gitlab" {
-  metadata {
-    name = var.namespace
-  }
-}
-
 # --- SECRETS ---
+# Agora todos usam var.namespace vindo do root
 
 resource "kubernetes_secret_v1" "gitlab_minio_secret" {
   metadata {
     name      = "gitlab-minio-secret"
-    namespace = kubernetes_namespace_v1.gitlab.metadata[0].name
+    namespace = var.namespace
   }
 
   type = "Opaque"
@@ -29,7 +24,7 @@ EOT
 resource "kubernetes_secret_v1" "gitlab_root_secret" {
   metadata {
     name      = "gitlab-root-secret"
-    namespace = kubernetes_namespace_v1.gitlab.metadata[0].name
+    namespace = var.namespace
   }
 
   type = "Opaque"
@@ -42,13 +37,13 @@ resource "kubernetes_secret_v1" "gitlab_root_secret" {
 resource "kubernetes_secret_v1" "gitlab_postgres_secret" {
   metadata {
     name      = "gitlab-postgres-secret"
-    namespace = kubernetes_namespace_v1.gitlab.metadata[0].name
+    namespace = var.namespace
   }
 
   type = "Opaque"
 
   data = {
-    "password" = "postgres"
+    "password" = "postgres" # Certifique-se que essa é a senha do seu módulo Postgres
   }
 }
 
@@ -58,9 +53,9 @@ resource "helm_release" "gitlab" {
   name      = "gitlab"
   chart     = "${path.module}/gitlab"
   version   = var.chart_version
-  namespace = kubernetes_namespace_v1.gitlab.metadata[0].name
+  namespace = var.namespace
 
-  timeout         = 600
+  timeout         = 1200 # Aumentado para 20min (GitLab no k3d é pesado)
   wait            = false
   wait_for_jobs   = false
   cleanup_on_fail = true
@@ -84,8 +79,7 @@ resource "helm_release" "gitlab" {
         configureCertmanager: false
         annotations:
           kubernetes.io/ingress.class: "traefik"
-          kubernetes.io/ingress.provider: ""
-          traefik.ingress.kubernetes.io/router.middlewares: "gitlab-traefik-force-https-header@kubernetescrd"
+          traefik.ingress.kubernetes.io/router.middlewares: "${var.namespace}-traefik-force-https-header@kubernetescrd"
       hosts:
         domain: ${var.domain_name}
         gitlab:
@@ -127,8 +121,6 @@ resource "helm_release" "gitlab" {
         registry: { enabled: true, bucket: gitlab-registry }
 
     certmanager: { install: false }
-    certmanager-issuer: { install: false }
-
     nginx-ingress: { enabled: false }
     prometheus: { install: false }
     gitlab-exporter: { enabled: false }
@@ -137,12 +129,6 @@ resource "helm_release" "gitlab" {
 
     redis:
       install: true
-      image:
-        registry: public.ecr.aws
-        repository: bitnami/redis
-        tag: 7.2.4-debian-12-r10
-      metrics:
-        enabled: false
       resources:
         requests:
           cpu: 100m
@@ -155,35 +141,21 @@ resource "helm_release" "gitlab" {
           RAILS_TRUSTED_PROXIES: "${join(",", var.trusted_proxies)}"
         minReplicas: 1
         maxReplicas: 1
-        workerProcesses: 2
         workerTimeout: 1800
         resources:
           requests:
             cpu: 800m
             memory: 2Gi
-          limits:
-            cpu: 2500m
-            memory: 5Gi
         livenessProbe:
           initialDelaySeconds: 300
         readinessProbe:
           initialDelaySeconds: 150
 
       sidekiq:
-        minReplicas: 1
-        maxReplicas: 1
         resources:
           requests:
             cpu: 300m
             memory: 1Gi
-
-      gitlab-shell:
-        minReplicas: 1
-        maxReplicas: 1
-
-      kas:
-        minReplicas: 1
-        maxReplicas: 1
 
       gitaly:
         securityContext:
@@ -193,27 +165,6 @@ resource "helm_release" "gitlab" {
           enabled: true
           storageClass: "local-path"
           size: 100Gi
-        resources:
-          requests:
-            cpu: 200m
-            memory: 1Gi
-
-    registry:
-      hpa:
-        minReplicas: 1
-        maxReplicas: 1
-
-    ingress:
-      enabled: true
-      class: traefik
-      annotations:
-        kubernetes.io/ingress.class: "traefik"
-        kubernetes.io/ingress.provider: ""
-        traefik.ingress.kubernetes.io/router.middlewares: "gitlab-traefik-force-https-header@kubernetescrd"
-      configureCertmanager: false
-      tls:
-        enabled: true
-        secretName: nginx-certs
     YAML
   ]
 }
@@ -226,43 +177,22 @@ resource "helm_release" "gitlab_runner" {
   name       = "gitlab-runner"
   repository = "https://charts.gitlab.io/"
   chart      = "gitlab-runner"
-  namespace  = kubernetes_namespace_v1.gitlab.metadata[0].name
+  namespace  = var.namespace
   version    = "0.70.0"
-
-  wait = false
 
   values = [
     <<-YAML
-    gitlabUrl: http://gitlab-webservice-default.${kubernetes_namespace_v1.gitlab.metadata[0].name}.svc.cluster.local:8181
+    gitlabUrl: http://gitlab-webservice-default.${var.namespace}.svc.cluster.local:8181
     runnerToken: ${var.runner_authentication_token}
-    checkInterval: 30
-    rbac: { create: true }
-    replicas: 1
     runners:
       privileged: true
       executor: kubernetes
-      resources:
-        requests:
-          cpu: 100m
-          memory: 256Mi
     YAML
   ]
 }
 
-# --- DATA & OUTPUTS ---
-
-data "kubernetes_service" "gitlab_webservice" {
-  depends_on = [helm_release.gitlab]
-  metadata {
-    name      = "gitlab-webservice-default"
-    namespace = kubernetes_namespace_v1.gitlab.metadata[0].name
-  }
-}
+# --- OUTPUTS ---
 
 output "gitlab_url" {
   value = "https://${var.domain_name}"
-}
-
-output "gitlab_status_command" {
-  value = "kubectl get pods -n ${var.namespace} -w"
 }

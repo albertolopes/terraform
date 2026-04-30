@@ -55,7 +55,6 @@ variable "runner_authentication_token" {
   sensitive   = true
 }
 
-# --- NOVA VARIÁVEL PARA O FIX DO ERRO 422 ---
 variable "trusted_proxies" {
   description = "List of trusted proxy IP ranges (K3d internal networks)"
   type        = list(string)
