@@ -61,7 +61,7 @@ resource "helm_release" "gitlab" {
   namespace       = kubernetes_namespace_v1.gitlab.metadata[0].name
 
   timeout         = 600
-  wait            = false # Fire and forget para não travar no boot lento
+  wait            = false
   wait_for_jobs   = false
   cleanup_on_fail = true
   atomic          = false
@@ -108,6 +108,8 @@ resource "helm_release" "gitlab" {
           key: password
 
       appConfig:
+        # CORREÇÃO 422: Confia nos IPs internos do cluster para validar o protocolo HTTPS
+        trusted_proxies: ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"]
         object_store:
           enabled: true
           proxy_download: true
@@ -159,11 +161,8 @@ resource "helm_release" "gitlab" {
             memory: 5Gi
         livenessProbe:
           initialDelaySeconds: 300
-          periodSeconds: 30
         readinessProbe:
           initialDelaySeconds: 150
-          periodSeconds: 10
-          timeoutSeconds: 10
 
       sidekiq:
         minReplicas: 1
@@ -172,9 +171,6 @@ resource "helm_release" "gitlab" {
           requests:
             cpu: 300m
             memory: 1Gi
-          limits:
-            cpu: 1000m
-            memory: 2Gi
 
       gitlab-shell:
         minReplicas: 1
@@ -192,26 +188,10 @@ resource "helm_release" "gitlab" {
             cpu: 50m
             memory: 64Mi
 
-      toolbox:
-        resources:
-          requests:
-            cpu: 50m
-            memory: 256Mi
-
-      migrations:
-        resources:
-          requests:
-            cpu: 500m
-            memory: 1Gi
-
     registry:
       hpa:
         minReplicas: 1
         maxReplicas: 1
-      resources:
-        requests:
-          cpu: 50m
-          memory: 64Mi
 
     ingress:
       enabled: true
@@ -219,6 +199,7 @@ resource "helm_release" "gitlab" {
       annotations:
         kubernetes.io/ingress.class: traefik
         kubernetes.io/ingress.provider: traefik
+        # CORREÇÃO 422: Garante que o cabeçalho X-Forwarded-Proto chegue como https
         traefik.ingress.kubernetes.io/router.middlewares: traefik-force-https-header@kubernetescrd
       configureCertmanager: false
       tls:
@@ -239,7 +220,7 @@ resource "helm_release" "gitlab_runner" {
   namespace  = kubernetes_namespace_v1.gitlab.metadata[0].name
   version    = "0.70.0"
 
-  wait       = false 
+  wait       = false
 
   values = [
     <<-YAML
