@@ -12,24 +12,24 @@ terraform {
   }
 }
 
-# 1. Gerar uma senha forte para o túnel automaticamente (se não quiser passar via var)
+# 1. Gerar uma senha forte para o túnel automaticamente
 resource "random_password" "tunnel_secret" {
   length  = 64
   special = false
 }
 
-# 2. Criar o Túnel Cloudflare
-resource "cloudflare_tunnel" "k3d_tunnel" {
+# 2. Criar o Túnel Cloudflare (Atualizado para Zero Trust)
+resource "cloudflare_zero_trust_tunnel_cloudflared" "k3d_tunnel" {
   account_id = var.cloudflare_account_id
   name       = var.tunnel_name
   secret     = base64encode(random_password.tunnel_secret.result)
 }
 
-# 3. Configurar os Aliases (Ingress Rules) do Túnel
+# 3. Configurar os Aliases (Ingress Rules) do Túnel (Atualizado)
 # Isso mapeia o domínio externo para o serviço interno do Kubernetes
-resource "cloudflare_tunnel_config" "k3d_config" {
+resource "cloudflare_zero_trust_tunnel_cloudflared_config" "k3d_config" {
   account_id = var.cloudflare_account_id
-  tunnel_id  = cloudflare_tunnel.k3d_tunnel.id
+  tunnel_id  = cloudflare_zero_trust_tunnel_cloudflared.k3d_tunnel.id
 
   config {
     # Mapeamento Dinâmico para o Bot, GitLab, etc.
@@ -52,32 +52,15 @@ resource "cloudflare_tunnel_config" "k3d_config" {
 resource "cloudflare_record" "tunnel_cnames" {
   for_each = { for s in var.services : s.hostname => s }
 
-  zone_id = var.cloudflare_zone_id
-  name    = each.value.hostname
-  type    = "CNAME"
-  content         = "${cloudflare_tunnel.k3d_tunnel.id}.cfargotunnel.com"
+  zone_id         = var.cloudflare_zone_id
+  name            = each.value.hostname
+  type            = "CNAME"
+  content         = "${cloudflare_zero_trust_tunnel_cloudflared.k3d_tunnel.id}.cfargotunnel.com"
   proxied         = true
   allow_overwrite = true
 }
 
-# 5. Forçar SSL e HTTPS na Cloudflare via Terraform
-# (Comentado devido a erro de 'prefetch_preload' em planos Free/Pro)
-# resource "cloudflare_zone_settings_override" "zone_settings" {
-#   zone_id = var.cloudflare_zone_id
-# 
-#   settings {
-#     # Modo de criptografia SSL (Full/Strict)
-#     ssl = "strict"
-#     
-#     # Redirecionar todo HTTP para HTTPS na borda da Cloudflare
-#     always_use_https = "on"
-#     
-#     # Otimizações de segurança recomendadas
-#     min_tls_version = "1.2"
-#   }
-# }
-
-# 6. Criar o segredo do túnel no Kubernetes
+# 5. Criar o segredo do túnel no Kubernetes
 resource "kubernetes_secret_v1" "tunnel_token" {
   metadata {
     name      = "cloudflare-tunnel-token"
@@ -85,7 +68,9 @@ resource "kubernetes_secret_v1" "tunnel_token" {
   }
 
   data = {
-    token = cloudflare_tunnel.k3d_tunnel.tunnel_token
+    # O novo recurso usa tunnel_token em vez de apenas token em algumas saídas,
+    # mas o provider 4.0 mapeou isso corretamente.
+    token = cloudflare_zero_trust_tunnel_cloudflared.k3d_tunnel.tunnel_token
   }
 }
 
@@ -118,6 +103,7 @@ resource "kubernetes_deployment_v1" "cloudflared" {
         container {
           name  = "cloudflared"
           image = "cloudflare/cloudflared:latest"
+          # Forçando o protocolo http2 que geralmente é mais estável no k3d local
           args  = ["tunnel", "--no-autoupdate", "--metrics", "0.0.0.0:2000", "--protocol", "http2", "run"]
 
           env {
@@ -129,7 +115,6 @@ resource "kubernetes_deployment_v1" "cloudflared" {
               }
             }
           }
-
         }
       }
     }
