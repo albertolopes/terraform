@@ -194,9 +194,8 @@ resource "helm_release" "gitlab" {
           fsGroup: 1000
         persistence:
           enabled: true
-          # CORREÇÃO: k3d usa local-path, não do-block-storage
           storageClass: "local-path"
-          size: 20Gi
+          size: 100Gi
         resources:
           requests:
             cpu: 200m
