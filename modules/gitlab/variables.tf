@@ -50,3 +50,9 @@ variable "runner_authentication_token" {
   type        = string
   sensitive   = true
 }
+
+variable "trusted_proxies" {
+  description = "Lista de IPs/CIDRs confiáveis para o GitLab (Traefik/Cloudflare)"
+  type        = list(string)
+  default     = ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "127.0.0.1"]
+}
