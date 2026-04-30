@@ -56,7 +56,7 @@ resource "kubernetes_secret_v1" "gitlab_postgres_secret" {
 
 resource "helm_release" "gitlab" {
   name            = "gitlab"
-  chart           = "${path.module}/gitlab" # Aponta para a pasta local (Vendoring)
+  chart           = "${path.module}/gitlab"
   version         = var.chart_version
   namespace       = kubernetes_namespace_v1.gitlab.metadata[0].name
   timeout         = 3600
@@ -84,7 +84,6 @@ resource "helm_release" "gitlab" {
       image:
         tag: ${var.gitlab_version}
 
-      # CORREÇÃO MINIO: No GitLab 18, o enabled deve estar dentro do global
       minio:
         enabled: false
 
@@ -114,10 +113,7 @@ resource "helm_release" "gitlab" {
         uploads: { enabled: true, bucket: gitlab-uploads }
         registry: { enabled: true, bucket: gitlab-registry }
 
-    # DESATIVAÇÃO DE SERVIÇOS INTERNOS
     certmanager: { install: false }
-
-    # AJUSTE PARA PASSAR NA VALIDAÇÃO DO HELM (Mesmo desativado, exige e-mail)
     certmanager-issuer:
       install: false
       email: "admin@${var.domain_name}"
@@ -139,6 +135,7 @@ resource "helm_release" "gitlab" {
         requests:
           cpu: 100m
           memory: 256Mi
+
     gitlab:
       webservice:
         minReplicas: 1
@@ -146,24 +143,24 @@ resource "helm_release" "gitlab" {
         workerProcesses: 2
         resources:
           requests:
-            cpu: 1200m
-            memory: 1500Gi
+            cpu: 800m       # Reduzido para garantir agendamento no seu nó
+            memory: 2Gi      # CORRIGIDO: de 1500Gi para 2Gi
           limits:
             cpu: 2500m
-            memory: 6Gi
+            memory: 5Gi
         livenessProbe:
-          initialDelaySeconds: 900
+          initialDelaySeconds: 120  # Reduzido: segurança para o boot
           periodSeconds: 30
         readinessProbe:
-          initialDelaySeconds: 600
+          initialDelaySeconds: 60   # Reduzido: como o banco está OK, 60s é suficiente
           periodSeconds: 10
           timeoutSeconds: 10
 
       sidekiq:
         resources:
           requests:
-            cpu: 500m
-            memory: 1.5Gi
+            cpu: 300m
+            memory: 1Gi
           limits:
             cpu: 1000m
             memory: 2Gi
@@ -171,26 +168,26 @@ resource "helm_release" "gitlab" {
       gitlab-shell:
         resources:
           requests:
-            cpu: 100m
-            memory: 128Mi
+            cpu: 50m
+            memory: 64Mi
 
       kas:
         resources:
           requests:
-            cpu: 100m
-            memory: 128Mi
+            cpu: 50m
+            memory: 64Mi
 
       toolbox:
         resources:
           requests:
-            cpu: 100m
-            memory: 512Mi
+            cpu: 50m
+            memory: 256Mi
 
       migrations:
         resources:
           requests:
-            cpu: 800m
-            memory: 1.5Gi
+            cpu: 500m
+            memory: 1Gi
 
     ingress:
       enabled: true
@@ -228,8 +225,8 @@ resource "helm_release" "gitlab_runner" {
       executor: kubernetes
       resources:
         requests:
-          cpu: 200m
-          memory: 512Mi
+          cpu: 100m
+          memory: 256Mi
     YAML
   ]
 }
