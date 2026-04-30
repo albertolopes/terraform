@@ -147,10 +147,10 @@ resource "helm_release" "gitlab" {
         resources:
           requests:
             cpu: 1200m
-            memory: 3Gi
+            memory: 1500Gi
           limits:
             cpu: 2500m
-            memory: 5Gi
+            memory: 6Gi
         livenessProbe:
           initialDelaySeconds: 900
           periodSeconds: 30
