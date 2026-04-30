@@ -59,9 +59,13 @@ resource "helm_release" "gitlab" {
   chart           = "${path.module}/gitlab"
   version         = var.chart_version
   namespace       = kubernetes_namespace_v1.gitlab.metadata[0].name
-  timeout         = 3600
-  wait            = true
-  wait_for_jobs   = true
+
+  # --- CONFIGURAÇÃO DE TIMEOUT E ESPERA ---
+  timeout         = 600    # 10 minutos para o upload dos manifestos
+  wait            = false  # Terraform libera o terminal sem esperar os pods
+  wait_for_jobs   = false  # Não trava esperando as migrations
+  # ----------------------------------------
+
   cleanup_on_fail = true
   atomic          = false
   max_history     = 3
@@ -76,7 +80,6 @@ resource "helm_release" "gitlab" {
     <<-YAML
     global:
       edition: ce
-      # ESSENCIAL: Força a classe Traefik globalmente para todos os componentes
       ingress:
         enabled: true
         class: traefik
@@ -130,6 +133,8 @@ resource "helm_release" "gitlab" {
     gitlab-exporter: { enabled: false }
     postgresql: { install: false }
 
+    gitlab-runner: { install: false }
+
     redis:
       install: true
       image:
@@ -157,14 +162,16 @@ resource "helm_release" "gitlab" {
             cpu: 2500m
             memory: 5Gi
         livenessProbe:
-          initialDelaySeconds: 300 # Aumentado levemente para estabilizar
+          initialDelaySeconds: 300
           periodSeconds: 30
         readinessProbe:
-          initialDelaySeconds: 150 # Aumentado levemente
+          initialDelaySeconds: 150
           periodSeconds: 10
           timeoutSeconds: 10
 
       sidekiq:
+        minReplicas: 1
+        maxReplicas: 1
         resources:
           requests:
             cpu: 300m
@@ -174,12 +181,16 @@ resource "helm_release" "gitlab" {
             memory: 2Gi
 
       gitlab-shell:
+        minReplicas: 1
+        maxReplicas: 1
         resources:
           requests:
             cpu: 50m
             memory: 64Mi
 
       kas:
+        minReplicas: 1
+        maxReplicas: 1
         resources:
           requests:
             cpu: 50m
@@ -197,7 +208,15 @@ resource "helm_release" "gitlab" {
             cpu: 500m
             memory: 1Gi
 
-    # Reforço das anotações do Ingress para garantir que o Traefik ignore o TLS interno se necessário
+    registry:
+      hpa:
+        minReplicas: 1
+        maxReplicas: 1
+      resources:
+        requests:
+          cpu: 50m
+          memory: 64Mi
+
     ingress:
       enabled: true
       class: traefik
@@ -224,12 +243,16 @@ resource "helm_release" "gitlab_runner" {
   namespace  = kubernetes_namespace_v1.gitlab.metadata[0].name
   version    = "0.70.0"
 
+  # Também desativamos a espera aqui para não travar o Terraform
+  wait       = false
+
   values = [
     <<-YAML
     gitlabUrl: http://gitlab-webservice-default.${kubernetes_namespace_v1.gitlab.metadata[0].name}.svc.cluster.local:8181
     runnerToken: ${var.runner_authentication_token}
     checkInterval: 30
     rbac: { create: true }
+    replicas: 1
     runners:
       privileged: true
       executor: kubernetes
