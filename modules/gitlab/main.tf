@@ -80,9 +80,7 @@ resource "helm_release" "gitlab" {
       ingress:
         enabled: true
         class: traefik
-        # AJUSTE: Anula o provider para o Helm não assumir Nginx
         provider: ""
-        configureCertmanager: false
       hosts:
         domain: ${var.domain_name}
         gitlab:
@@ -149,11 +147,9 @@ resource "helm_release" "gitlab" {
 
     gitlab:
       webservice:
-        # --- TIRO DE MISERICÓRDIA NO ERRO 422 ---
         extraEnv:
           GITLAB_HTTPS: "true"
           RAILS_TRUSTED_PROXIES: "${join(",", var.trusted_proxies)}"
-        # ----------------------------------------
         minReplicas: 1
         maxReplicas: 1
         workerProcesses: 2
@@ -181,18 +177,10 @@ resource "helm_release" "gitlab" {
       gitlab-shell:
         minReplicas: 1
         maxReplicas: 1
-        resources:
-          requests:
-            cpu: 50m
-            memory: 64Mi
 
       kas:
         minReplicas: 1
         maxReplicas: 1
-        resources:
-          requests:
-            cpu: 50m
-            memory: 64Mi
 
     registry:
       hpa:
@@ -203,11 +191,9 @@ resource "helm_release" "gitlab" {
       enabled: true
       class: traefik
       annotations:
-        kubernetes.io/ingress.class: traefik
-        # AJUSTE: Força o provider a ficar vazio para limpar as anotações de Nginx
+        kubernetes.io/ingress.class: "traefik"
         kubernetes.io/ingress.provider: ""
-        # CORREÇÃO 422: Referencia o middleware corretamente
-        traefik.ingress.kubernetes.io/router.middlewares: gitlab-traefik-force-https-header@kubernetescrd
+        traefik.ingress.kubernetes.io/router.middlewares: "gitlab-traefik-force-https-header@kubernetescrd"
       configureCertmanager: false
       tls:
         enabled: true
