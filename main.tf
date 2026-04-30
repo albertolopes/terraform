@@ -112,8 +112,7 @@ resource "kubernetes_manifest" "traefik_middleware" {
       }
     }
   }
-  # Garante que o cluster e o namespace já existem
-  depends_on = [module.k3d_cluster]
+  depends_on = [module.k3d_cluster, module.gitlab]
 }
 
 # --- GitLab ---
