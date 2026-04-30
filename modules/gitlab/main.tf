@@ -1,3 +1,5 @@
+# modules/gitlab/main.tf
+
 resource "kubernetes_namespace_v1" "gitlab" {
   metadata {
     name = var.namespace
@@ -108,8 +110,8 @@ resource "helm_release" "gitlab" {
           key: password
 
       appConfig:
-        # CORREÇÃO 422: Confia nos IPs internos do cluster para validar o protocolo HTTPS
-        trusted_proxies: ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"]
+        # CORREÇÃO 422: Agora usa a variável dinâmica definida no variables.tf
+        trusted_proxies: ${jsonencode(var.trusted_proxies)}
         object_store:
           enabled: true
           proxy_download: true
@@ -148,6 +150,11 @@ resource "helm_release" "gitlab" {
 
     gitlab:
       webservice:
+        # --- TIRO DE MISERICÓRDIA NO ERRO 422 ---
+        extraEnv:
+          GITLAB_HTTPS: "true"
+          RAILS_TRUSTED_PROXIES: "${join(",", var.trusted_proxies)}"
+        # ----------------------------------------
         minReplicas: 1
         maxReplicas: 1
         workerProcesses: 2
@@ -199,8 +206,8 @@ resource "helm_release" "gitlab" {
       annotations:
         kubernetes.io/ingress.class: traefik
         kubernetes.io/ingress.provider: traefik
-        # CORREÇÃO 422: Garante que o cabeçalho X-Forwarded-Proto chegue como https
-        traefik.ingress.kubernetes.io/router.middlewares: traefik-force-https-header@kubernetescrd
+        # CORREÇÃO 422: Refere-se ao middleware criado no main principal
+        traefik.ingress.kubernetes.io/router.middlewares: gitlab-traefik-force-https-header@kubernetescrd
       configureCertmanager: false
       tls:
         enabled: true

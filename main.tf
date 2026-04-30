@@ -130,12 +130,14 @@ module "gitlab" {
 
   runner_authentication_token = var.gitlab_runner_token
 
+  # ADICIONE ESTA LINHA AQUI:
+  trusted_proxies    = ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "127.0.0.1"]
+
   providers = {
     helm       = helm
     kubernetes = kubernetes
   }
 
-  # Adicionado o middleware no depends_on para evitar erro 422 no boot
   depends_on = [
     module.traefik,
     module.minio,
