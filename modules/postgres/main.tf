@@ -156,12 +156,12 @@ resource "kubernetes_deployment_v1" "postgres" {
 
           resources {
             requests = {
-              cpu    = "250m"
-              memory = "512Mi"
+              cpu    = "500m"
+              memory = "1Gi"
             }
             limits = {
-              cpu    = "1000m"
-              memory = "1Gi"
+              cpu    = "2000m"
+              memory = "5Gi"
             }
           }
 
@@ -235,7 +235,6 @@ resource "null_resource" "postgres_permissions" {
       done
 
       echo "Permissões completas configuradas para o usuário postgres!"
-      echo "Usuário é OWNER de todos os bancos e schemas!"
     EOT
 
     environment = {
