@@ -1,4 +1,4 @@
-# --- SECRETS (Mantidos) ---
+# --- SECRETS ---
 
 resource "kubernetes_secret_v1" "gitlab_minio_secret" {
   metadata {
@@ -59,7 +59,7 @@ resource "helm_release" "gitlab" {
   version   = var.chart_version
   namespace = var.namespace
 
-  timeout         = 1800 # Aumentado para 30min
+  timeout         = 1800
   wait            = false
   wait_for_jobs   = false
   cleanup_on_fail = true
@@ -80,6 +80,7 @@ resource "helm_release" "gitlab" {
       ingress:
         enabled: true
         class: traefik
+        configureCertmanager: false # DESATIVADO AQUI
         annotations:
           kubernetes.io/ingress.class: "traefik"
           traefik.ingress.kubernetes.io/router.middlewares: "${var.namespace}-traefik-force-https-header@kubernetescrd"
@@ -105,16 +106,19 @@ resource "helm_release" "gitlab" {
           secret: gitlab-postgres-secret
           key: password
 
-    # --- DESATIVAR COMPONENTES INTERNOS ---
+    # --- DESATIVAR CERT-MANAGER E ISSUER (O FIX ESTÁ AQUI) ---
+    certmanager: { install: false }
+    certmanager-issuer: { install: false } # Desativa explicitamente o sub-chart
+
     redis: { install: false }
     postgresql: { install: false }
     nginx-ingress: { enabled: false }
     prometheus: { install: false }
     gitlab-runner: { install: false }
 
-    # --- TURBINANDO OS RECURSOS ---
+    # --- RECURSOS PARA O K3D AGUENTAR O SETUP ---
     gitlab:
-      toolbox: # ESSENCIAL PARA AS MIGRATIONS
+      toolbox:
         resources:
           requests:
             cpu: 500m
@@ -124,8 +128,6 @@ resource "helm_release" "gitlab" {
             memory: 2.5Gi
 
       webservice:
-        minReplicas: 1
-        maxReplicas: 1
         resources:
           requests:
             cpu: 1000m
@@ -139,18 +141,12 @@ resource "helm_release" "gitlab" {
           requests:
             cpu: 500m
             memory: 1.5Gi
-          limits:
-            cpu: 1000m
-            memory: 2Gi
 
       gitaly:
         resources:
           requests:
             cpu: 500m
             memory: 1.5Gi
-          limits:
-            cpu: 1500m
-            memory: 3Gi
         persistence:
           enabled: true
           storageClass: "local-path"
