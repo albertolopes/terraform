@@ -77,10 +77,18 @@ resource "helm_release" "gitlab" {
     <<-YAML
     global:
       edition: ce
+      common:
+        labels:
+          app: gitlab
       ingress:
         enabled: true
         class: traefik
         provider: ""
+        configureCertmanager: false
+        annotations:
+          kubernetes.io/ingress.class: "traefik"
+          kubernetes.io/ingress.provider: ""
+          traefik.ingress.kubernetes.io/router.middlewares: "gitlab-traefik-force-https-header@kubernetescrd"
       hosts:
         domain: ${var.domain_name}
         gitlab:
@@ -122,9 +130,7 @@ resource "helm_release" "gitlab" {
         registry: { enabled: true, bucket: gitlab-registry }
 
     certmanager: { install: false }
-    certmanager-issuer:
-      install: false
-      email: "admin@${var.domain_name}"
+    certmanager-issuer: { install: false }
 
     nginx-ingress: { enabled: false }
     prometheus: { install: false }
