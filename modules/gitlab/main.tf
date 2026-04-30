@@ -1,5 +1,3 @@
-# modules/gitlab/main.tf
-
 resource "kubernetes_namespace_v1" "gitlab" {
   metadata {
     name = var.namespace
@@ -82,6 +80,8 @@ resource "helm_release" "gitlab" {
       ingress:
         enabled: true
         class: traefik
+        # AJUSTE: Anula o provider para o Helm não assumir Nginx
+        provider: ""
         configureCertmanager: false
       hosts:
         domain: ${var.domain_name}
@@ -110,7 +110,6 @@ resource "helm_release" "gitlab" {
           key: password
 
       appConfig:
-        # CORREÇÃO 422: Agora usa a variável dinâmica definida no variables.tf
         trusted_proxies: ${jsonencode(var.trusted_proxies)}
         object_store:
           enabled: true
@@ -205,8 +204,9 @@ resource "helm_release" "gitlab" {
       class: traefik
       annotations:
         kubernetes.io/ingress.class: traefik
-        kubernetes.io/ingress.provider: traefik
-        # CORREÇÃO 422: Refere-se ao middleware criado no main principal
+        # AJUSTE: Força o provider a ficar vazio para limpar as anotações de Nginx
+        kubernetes.io/ingress.provider: ""
+        # CORREÇÃO 422: Referencia o middleware corretamente
         traefik.ingress.kubernetes.io/router.middlewares: gitlab-traefik-force-https-header@kubernetescrd
       configureCertmanager: false
       tls:
