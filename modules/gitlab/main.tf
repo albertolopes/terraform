@@ -78,6 +78,8 @@ resource "helm_release" "gitlab" {
       edition: ce
       hosts:
         domain: ${var.domain_name}
+        gitlab:
+          name: ${var.domain_name} # Mata o erro do example.org
         https: true
         registry:
           name: registry.${var.domain_name}
@@ -107,6 +109,7 @@ resource "helm_release" "gitlab" {
           connection:
             secret: gitlab-minio-secret
             key: connection
+        # Certifique-se que esses buckets existem no seu MinIO
         lfs: { enabled: true, bucket: gitlab-lfs }
         artifacts: { enabled: true, bucket: gitlab-artifacts }
         packages: { enabled: true, bucket: gitlab-packages }
@@ -141,18 +144,19 @@ resource "helm_release" "gitlab" {
         minReplicas: 1
         maxReplicas: 1
         workerProcesses: 2
+        workerTimeout: 1800 #Puma timeout
         resources:
           requests:
-            cpu: 800m       # Reduzido para garantir agendamento no seu nó
-            memory: 2Gi      # CORRIGIDO: de 1500Gi para 2Gi
+            cpu: 800m
+            memory: 2Gi # Corrigido de 1500Gi
           limits:
             cpu: 2500m
             memory: 5Gi
         livenessProbe:
-          initialDelaySeconds: 120  # Reduzido: segurança para o boot
+          initialDelaySeconds: 200
           periodSeconds: 30
         readinessProbe:
-          initialDelaySeconds: 60   # Reduzido: como o banco está OK, 60s é suficiente
+          initialDelaySeconds: 120
           periodSeconds: 10
           timeoutSeconds: 10
 
