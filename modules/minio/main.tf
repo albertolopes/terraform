@@ -183,7 +183,6 @@ resource "kubernetes_job_v1" "create_buckets" {
   }
 
   spec {
-    wait_for_completion_timeout = "15m"
     template {
       metadata {}
       spec {
@@ -219,6 +218,18 @@ resource "kubernetes_job_v1" "create_buckets" {
       }
     }
     backoff_limit = 3
+  }
+}
+
+# Resource to wait for the Minio bucket creation job to complete
+resource "null_resource" "wait_for_minio_buckets_job" {
+  depends_on = [kubernetes_job_v1.create_buckets]
+
+  provisioner "local-exec" {
+    command = "kubectl wait --for=condition=complete --timeout=900s job/minio-create-buckets -n minio"
+    environment = {
+      KUBECONFIG = "${path.cwd}/.k3d_kubeconfig"
+    }
   }
 }
 
