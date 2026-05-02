@@ -195,6 +195,7 @@ resource "kubernetes_job_v1" "create_buckets" {
           command = ["sh", "-c"]
           args = [
             <<-EOT
+            apk add --no-cache curl # Install curl
             # Loop até o MinIO responder 200 OK
             until $(curl --output /dev/null --silent --head --fail http://minio:9000/minio/health/ready); do
                 echo "Aguardando MinIO iniciar..."
