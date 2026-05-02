@@ -144,7 +144,7 @@ resource "kubernetes_persistent_volume_claim_v1" "minio_data" {
     }
     # IMPORTANTE: Substitua "do-block-storage" pelo StorageClass disponível no seu cluster!
     # Ex: "gp2" para AWS, "standard" para GKE, "azurefile" para Azure, etc.
-    storage_class_name = "do-block-storage" 
+    storage_class_name = "local-path"
   }
 }
 
