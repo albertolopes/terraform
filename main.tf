@@ -107,6 +107,12 @@ resource "null_resource" "wait_for_traefik_middleware_crd" {
   }
 }
 
+# Add a short delay after CRD is established to allow Kubernetes API to fully propagate it
+resource "time_sleep" "wait_for_crd_propagation" {
+  depends_on = [null_resource.wait_for_traefik_middleware_crd]
+  create_duration = "30s" # Wait for 30 seconds
+}
+
 resource "kubernetes_manifest" "traefik_middleware" {
   manifest = {
     "apiVersion" = "traefik.io/v1alpha1"
@@ -127,7 +133,7 @@ resource "kubernetes_manifest" "traefik_middleware" {
   depends_on = [
     kubernetes_namespace_v1.gitlab,
     module.traefik,
-    null_resource.wait_for_traefik_middleware_crd # Explicitly wait for CRD
+    time_sleep.wait_for_crd_propagation # Explicitly wait for CRD propagation
   ]
 }
 
