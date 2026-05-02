@@ -56,7 +56,7 @@ resource "kubernetes_deployment_v1" "minio" {
       spec {
         container {
           name  = "minio"
-          image = "minio/minio:RELEASE.2024-04-17T00-48-02Z"
+          image = "minio/minio:RELEASE.2026-04-17T00-00-00Z"
           args  = ["server", "/data", "--console-address", ":9001"]
 
           liveness_probe {
