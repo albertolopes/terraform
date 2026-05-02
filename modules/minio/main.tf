@@ -190,12 +190,15 @@ resource "kubernetes_job_v1" "create_buckets" {
 
         container {
           name  = "mc"
-          image = "minio/mc:latest"
+          image = "alpine:latest" # Changed image to alpine:latest
 
           command = ["sh", "-c"]
           args = [
             <<-EOT
-            apk add --no-cache curl # Install curl
+            apk add --no-cache curl wget # Install curl and wget
+            wget https://dl.min.io/client/mc/release/linux-amd64/mc -O /usr/local/bin/mc # Download mc
+            chmod +x /usr/local/bin/mc # Make mc executable
+
             # Loop até o MinIO responder 200 OK
             until $(curl --output /dev/null --silent --head --fail http://minio:9000/minio/health/ready); do
                 echo "Aguardando MinIO iniciar..."
