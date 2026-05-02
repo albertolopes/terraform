@@ -54,16 +54,19 @@ locals {
 }
 
 provider "kubernetes" {
+  host        = "https://127.0.0.1:6443"
   config_path = local.kubeconfig_path
 }
 
 provider "helm" {
   kubernetes {
+    host        = "https://127.0.0.1:6443"
     config_path = local.kubeconfig_path
   }
 }
 
 provider "kubectl" {
+  host        = "https://127.0.0.1:6443"
   config_path = local.kubeconfig_path
 }
 
