@@ -183,7 +183,7 @@ resource "kubernetes_job_v1" "create_buckets" {
   }
 
   spec {
-    wait_for_completion_timeout = "15m" 
+    wait_for_completion_timeout = "15m"
     template {
       metadata {}
       spec {
