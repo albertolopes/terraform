@@ -63,7 +63,7 @@ resource "helm_release" "gitlab" {
   namespace = var.namespace
 
   timeout         = 1800
-  wait            = false
+  wait            = true # Changed to true to wait for GitLab to be ready
   wait_for_jobs   = false
   cleanup_on_fail = true
   atomic          = false
@@ -174,20 +174,73 @@ resource "helm_release" "gitlab" {
   ]
 }
 
+# --- Wait for GitLab Webservice to be available ---
+resource "null_resource" "wait_for_gitlab_webservice" {
+  depends_on = [helm_release.gitlab]
+
+  provisioner "local-exec" {
+    command = "kubectl wait --for=condition=available deployment/gitlab-webservice-default -n ${var.namespace} --timeout=900s"
+    environment = {
+      KUBECONFIG = "${path.cwd}/.k3d_kubeconfig"
+    }
+  }
+}
+
+# --- Retrieve GitLab Runner Token ---
+resource "null_resource" "get_gitlab_runner_token" {
+  depends_on = [null_resource.wait_for_gitlab_webservice]
+
+  provisioner "local-exec" {
+    command = <<EOT
+      set -euo pipefail
+
+      echo "Waiting for GitLab toolbox pod to be ready..."
+      kubectl wait --for=condition=ready pod -l app=toolbox,release=gitlab -n ${var.namespace} --timeout=600s
+
+      TOOLBOX_POD=$(kubectl get pod -l app=toolbox,release=gitlab -n ${var.namespace} -o jsonpath='{.items[0].metadata.name}')
+      if [ -z "$TOOLBOX_POD" ]; then
+        echo "Error: GitLab toolbox pod not found." >&2
+        exit 1
+      fi
+
+      echo "Retrieving GitLab Runner registration token from $TOOLBOX_POD..."
+      RUNNER_TOKEN=$(kubectl exec -it "$TOOLBOX_POD" -n ${var.namespace} -- gitlab-rails runner_registration_token)
+      if [ -z "$RUNNER_TOKEN" ]; then
+        echo "Error: Failed to retrieve GitLab Runner token." >&2
+        exit 1
+      fi
+
+      echo "$RUNNER_TOKEN" > "${path.module}/.gitlab_runner_token"
+      echo "GitLab Runner token saved to ${path.module}/.gitlab_runner_token"
+    EOT
+    environment = {
+      KUBECONFIG = "${path.cwd}/.k3d_kubeconfig"
+    }
+  }
+
+  triggers = {
+    gitlab_release_version = helm_release.gitlab.version
+  }
+}
+
 # --- GITLAB RUNNER ---
 
 resource "helm_release" "gitlab_runner" {
-  depends_on = [helm_release.gitlab]
+  depends_on = [
+    helm_release.gitlab,
+    null_resource.get_gitlab_runner_token # Now depends on getting the token
+  ]
   name       = "gitlab-runner"
   repository = "https://charts.gitlab.io/"
   chart      = "gitlab-runner"
   namespace  = var.namespace
   version    = "0.70.0"
+  timeout    = 900 # Increased timeout to 15 minutes
 
   values = [
     <<-YAML
     gitlabUrl: http://gitlab-webservice-default.${var.namespace}.svc.cluster.local:8181
-    runnerToken: ${var.runner_authentication_token}
+    runnerToken: ${file("${path.module}/.gitlab_runner_token")} # Read token from file
     runners:
       privileged: true
       executor: kubernetes

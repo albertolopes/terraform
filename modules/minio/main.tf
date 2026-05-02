@@ -219,7 +219,7 @@ resource "kubernetes_job_v1" "create_buckets" {
     }
     backoff_limit = 3
   }
-  wait_for_completion = false 
+  wait_for_completion = false
 }
 
 # Resource to wait for the Minio bucket creation job to complete
