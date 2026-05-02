@@ -27,7 +27,7 @@ module "cloudflare" {
   domain_name           = var.domain_name
   cloudflare_account_id = var.cloudflare_account_id
   cloudflare_zone_id    = var.cloudflare_zone_id
-  tunnel_name           = "k3d-tunnel" # Verifique se esta var existe no modulo
+  tunnel_name           = "k3d-tunnel"
 
   services = [
     { hostname = "*", service = "http://traefik.traefik.svc.cluster.local:80" },
@@ -44,7 +44,7 @@ module "cloudflare" {
     kubernetes = kubernetes
   }
 
-  depends_on = [module.k3d_cluster]
+  depends_on = [module.k3d_cluster, module.networking]
 }
 
 # --- Databases & Storage ---
@@ -120,8 +120,8 @@ module "gitlab" {
   source = "./modules/gitlab"
 
   # Argumentos obrigatórios que estavam faltando:
-  chart_version     = "8.6.0"                # Versão do Chart (ajuste se necessário)
-  postgres_password = var.postgres_password  # Passando a senha global da raiz
+  chart_version               = "8.6.0"                                    # Versão do Chart (ajuste se necessário)
+  postgres_password_secret_data = module.postgres.postgres_password_secret_data # Passando a senha base64-encoded do output do módulo postgres
 
   # Configurações de domínio e rede
   domain_name       = "gitlab.${var.domain_name}"
@@ -145,6 +145,7 @@ module "gitlab" {
     module.minio,
     module.postgres,
     module.cloudflare,
-    kubernetes_manifest.traefik_middleware
+    kubernetes_manifest.traefik_middleware,
+    kubernetes_namespace_v1.gitlab # Adicionado dependência no namespace do GitLab
   ]
 }

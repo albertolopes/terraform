@@ -21,8 +21,8 @@ variable "redis_password" {
   sensitive   = true
 }
 
-variable "postgres_password" {
-  description = "Senha para o PostgreSQL externo (porta 5433)"
+variable "postgres_password_secret_data" {
+  description = "Senha base64-encoded para o PostgreSQL externo (recebida do módulo postgres)"
   type        = string
   sensitive   = true
 }

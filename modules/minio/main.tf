@@ -56,8 +56,29 @@ resource "kubernetes_deployment_v1" "minio" {
       spec {
         container {
           name  = "minio"
-          image = "minio/minio:latest"
+          image = "minio/minio:RELEASE.2024-04-17T00-48-02Z"
           args  = ["server", "/data", "--console-address", ":9001"]
+
+          liveness_probe {
+            http_get {
+              path = "/minio/health/live"
+              port = 9000
+            }
+            initial_delay_seconds = 30
+            period_seconds        = 20
+            timeout_seconds       = 5
+          }
+
+          readiness_probe {
+            http_get {
+              path = "/minio/health/ready"
+              port = 9000
+            }
+            initial_delay_seconds = 15
+            period_seconds        = 20
+            timeout_seconds       = 5
+          }
+          # ---------------------------------------------
 
           port {
             container_port = 9000
@@ -95,15 +116,35 @@ resource "kubernetes_deployment_v1" "minio" {
           }
         }
 
+        # Adicionar um PersistentVolumeClaim para armazenamento persistente
         volume {
           name = "data"
-          host_path {
-            path = "/tmp/minio-data"
-            type = "DirectoryOrCreate"
+          persistent_volume_claim {
+            claim_name = kubernetes_persistent_volume_claim_v1.minio_data.metadata[0].name
           }
         }
       }
     }
+  }
+}
+
+# PersistentVolumeClaim para o MinIO
+resource "kubernetes_persistent_volume_claim_v1" "minio_data" {
+  metadata {
+    name      = "minio-data-pvc"
+    namespace = kubernetes_namespace_v1.minio.metadata[0].name
+  }
+
+  spec {
+    access_modes = ["ReadWriteOnce"]
+    resources {
+      requests = {
+        storage = "10Gi" # Ajuste o tamanho conforme necessário para seus dados
+      }
+    }
+    # IMPORTANTE: Substitua "do-block-storage" pelo StorageClass disponível no seu cluster!
+    # Ex: "gp2" para AWS, "standard" para GKE, "azurefile" para Azure, etc.
+    storage_class_name = "do-block-storage" 
   }
 }
 
@@ -156,16 +197,19 @@ resource "kubernetes_job_v1" "create_buckets" {
           command = ["sh", "-c"]
           args = [
             <<-EOT
-            echo "Waiting for MinIO to be ready..."
-            sleep 10
+            # Loop até o MinIO responder 200 OK
+            until $(curl --output /dev/null --silent --head --fail http://minio:9000/minio/health/ready); do
+                echo "Aguardando MinIO iniciar..."
+                sleep 2
+            done
+            
             mc alias set myminio http://minio:9000 ${var.minio_access_key} ${var.minio_secret_key}
-            mc mb myminio/terraform-state --ignore-existing
-            mc mb myminio/gitlab-lfs --ignore-existing
-            mc mb myminio/gitlab-artifacts --ignore-existing
-            mc mb myminio/gitlab-uploads --ignore-existing
-            mc mb myminio/gitlab-packages --ignore-existing
-            mc mb myminio/gitlab-registry --ignore-existing
-            echo "Buckets created successfully!"
+            
+            for bucket in terraform-state gitlab-lfs gitlab-artifacts gitlab-uploads gitlab-packages gitlab-registry; do
+              mc mb myminio/$bucket --ignore-existing
+            done
+            
+            echo "Buckets verificados/criados com sucesso!"
             EOT
           ]
         }
@@ -204,7 +248,7 @@ resource "kubernetes_ingress_v1" "minio" {
       }
     }
     tls {
-      secret_name = "nginx-certs"
+      secret_name = "traefik-certs" # Corrigido para usar o secret do Traefik
     }
   }
 }
@@ -238,7 +282,7 @@ resource "kubernetes_ingress_v1" "minio_console" {
       }
     }
     tls {
-      secret_name = "nginx-certs"
+      secret_name = "traefik-certs" # Corrigido para usar o secret do Traefik
     }
   }
 }
@@ -248,5 +292,5 @@ output "minio_url" {
 }
 
 output "minio_console_url" {
-  value = "http://minio.${var.domain_name}:9001"
+  value = "https://minio-console.${var.domain_name}" # Corrigido para HTTPS e domínio do console
 }

@@ -30,16 +30,18 @@ resource "kubernetes_secret_v1" "gitlab_root_secret" {
   }
 }
 
-resource "kubernetes_secret_v1" "gitlab_postgres_secret" {
+resource "kubernetes_secret_v1" "gitlab_external_postgres_password" {
   metadata {
-    name      = "gitlab-postgres-secret"
+    name      = "gitlab-external-postgres-password"
     namespace = var.namespace
   }
-  type = "Opaque"
+
   data = {
-    "password" = base64encode(var.postgres_password)
+    password = var.postgres_password_secret_data # Recebe a senha base64-encoded do módulo postgres
   }
+  type = "Opaque"
 }
+
 
 resource "kubernetes_secret_v1" "gitlab_redis_password" {
   metadata {
@@ -57,7 +59,7 @@ resource "kubernetes_secret_v1" "gitlab_redis_password" {
 resource "helm_release" "gitlab" {
   name      = "gitlab"
   chart     = "${path.module}/gitlab"
-  version   = var.chart_version
+  version   = "9.0.0"
   namespace = var.namespace
 
   timeout         = 1800
@@ -68,10 +70,9 @@ resource "helm_release" "gitlab" {
   max_history     = 3
 
   depends_on = [
-    kubernetes_secret_v1.gitlab_postgres_secret,
-    kubernetes_secret_v1.gitlab_minio_secret,
+    kubernetes_secret_v1.gitlab_external_postgres_password, # Nova dependência para o secret da senha do Postgres
     kubernetes_secret_v1.gitlab_root_secret,
-    kubernetes_secret_v1.gitlab_redis_password
+    kubernetes_secret_v1.gitlab_redis_password,
   ]
 
   values = [
@@ -98,20 +99,21 @@ resource "helm_release" "gitlab" {
           secret: gitlab-redis-password
           key: password
 
+      # Configuração para usar o PostgreSQL externo
       psql:
-        host: postgres.postgres.svc.cluster.local
+        host: postgres.postgres.svc.cluster.local # Nome do serviço PostgreSQL no namespace 'postgres'
         port: 5433
-        username: postgres
-        database: gitlabhq_production
+        username: postgres # Usuário configurado no módulo postgres
+        database: gitlabhq_production # Banco de dados para o GitLab
         password:
-          secret: gitlab-postgres-secret
-          key: password
+          secret: gitlab-external-postgres-password # Nome do secret que criamos
+          key: password # Chave dentro do secret que contém a senha
 
     # Desativa componentes internos para usar os externos (ou economizar RAM)
     certmanager: { install: false }
     certmanager-issuer: { install: false }
     redis: { install: false }
-    postgresql: { install: false }
+    postgresql: { install: false } # Desativa o PostgreSQL interno, pois usaremos o externo
     nginx-ingress: { enabled: false }
     prometheus: { install: false }
     gitlab-runner: { install: false }
