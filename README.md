@@ -38,10 +38,10 @@ Devido a dependências de CRDs (Custom Resource Definitions), é **CRÍTICO** se
 
 **Passo 0: Limpeza (Opcional, mas recomendado para recomeçar do zero)**
 ```sh
-k3d cluster delete mycluster
+`k3d cluster delete mycluster
 rm -f .terraform.lock.hcl
 rm -rf .terraform
-rm -f terraform.tfstate*
+rm -f terraform.tfstate*`
 rm -f .k3d_kubeconfig # Remova o kubeconfig gerado
 ```
 

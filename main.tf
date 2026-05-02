@@ -112,7 +112,10 @@ resource "kubernetes_manifest" "traefik_middleware" {
       }
     }
   }
-  depends_on = [kubernetes_namespace_v1.gitlab]
+  depends_on = [
+    kubernetes_namespace_v1.gitlab,
+    module.traefik 
+  ]
 }
 
 # Módulo GitLab (Ajustado com os argumentos faltantes)
