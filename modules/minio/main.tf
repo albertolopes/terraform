@@ -20,7 +20,7 @@ resource "kubernetes_secret_v1" "minio_credentials" {
 
   data = {
     rootUser     = var.minio_access_key
-    rootPassword = var.minio_secret_key
+    rootPassword = var.minio_access_key
   }
 }
 
@@ -183,6 +183,7 @@ resource "kubernetes_job_v1" "create_buckets" {
   }
 
   spec {
+    wait_for_completion_timeout = "15m" 
     template {
       metadata {}
       spec {
