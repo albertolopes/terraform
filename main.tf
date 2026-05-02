@@ -95,6 +95,18 @@ resource "kubernetes_namespace_v1" "gitlab" {
   depends_on = [module.k3d_cluster]
 }
 
+# Resource to wait for Traefik Middleware CRD to be established
+resource "null_resource" "wait_for_traefik_middleware_crd" {
+  depends_on = [module.traefik]
+
+  provisioner "local-exec" {
+    command = "kubectl wait --for=condition=established --timeout=120s crd/middlewares.traefik.io"
+    environment = {
+      KUBECONFIG = "${path.cwd}/.k3d_kubeconfig"
+    }
+  }
+}
+
 resource "kubernetes_manifest" "traefik_middleware" {
   manifest = {
     "apiVersion" = "traefik.io/v1alpha1"
@@ -114,7 +126,8 @@ resource "kubernetes_manifest" "traefik_middleware" {
   }
   depends_on = [
     kubernetes_namespace_v1.gitlab,
-    module.traefik 
+    module.traefik,
+    null_resource.wait_for_traefik_middleware_crd # Explicitly wait for CRD
   ]
 }
 
