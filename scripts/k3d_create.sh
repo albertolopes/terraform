@@ -144,12 +144,8 @@ echo "Cluster '$name' created and API is ready."
 # Fix kubeconfig (external access)
 # ==============================
 
-SERVER_IP=$(hostname -I | awk '{print $1}')
-
-if [ -z "$SERVER_IP" ]; then
-  echo "Could not determine server IP" >&2
-  exit 1
-fi
+# Explicitly set the server to 127.0.0.1 as per cluster.yaml and common k3d access
+SERVER_IP="127.0.0.1"
 
 CLUSTER_NAME=$($KUBECTL_BIN --kubeconfig "$KUBECONFIG_PATH" config view -o jsonpath='{.clusters[0].name}')
 
