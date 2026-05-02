@@ -19,7 +19,6 @@ resource "kubernetes_secret_v1" "minio_credentials" {
   }
 
   data = {
-    # Removido base64encode: O Terraform já faz a codificação automaticamente
     rootUser     = var.minio_access_key
     rootPassword = var.minio_secret_key
   }
@@ -139,13 +138,12 @@ resource "kubernetes_persistent_volume_claim_v1" "minio_data" {
     access_modes = ["ReadWriteOnce"]
     resources {
       requests = {
-        storage = "10Gi" # Ajuste o tamanho conforme necessário para seus dados
+        storage = "100Gi"
       }
     }
-    # IMPORTANTE: Substitua "do-block-storage" pelo StorageClass disponível no seu cluster!
-    # Ex: "gp2" para AWS, "standard" para GKE, "azurefile" para Azure, etc.
     storage_class_name = "local-path"
   }
+  wait_until_bound = false
 }
 
 # Service do MinIO
@@ -248,7 +246,7 @@ resource "kubernetes_ingress_v1" "minio" {
       }
     }
     tls {
-      secret_name = "traefik-certs" # Corrigido para usar o secret do Traefik
+      secret_name = "traefik-certs"
     }
   }
 }
@@ -282,7 +280,7 @@ resource "kubernetes_ingress_v1" "minio_console" {
       }
     }
     tls {
-      secret_name = "traefik-certs" # Corrigido para usar o secret do Traefik
+      secret_name = "traefik-certs"
     }
   }
 }
@@ -292,5 +290,5 @@ output "minio_url" {
 }
 
 output "minio_console_url" {
-  value = "https://minio-console.${var.domain_name}" # Corrigido para HTTPS e domínio do console
+  value = "https://minio-console.${var.domain_name}"
 }
