@@ -37,7 +37,9 @@ resource "kubernetes_secret_v1" "gitlab_external_postgres_password" {
   }
   type = "Opaque"
   data = {
-    password = base64encode(var.postgres_password_secret_data)
+    # Corrigido: Removido base64encode para evitar codificação dupla,
+    # já que a variável já contém o dado em base64.
+    password = var.postgres_password_secret_data
   }
 }
 
