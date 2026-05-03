@@ -35,13 +35,11 @@ resource "kubernetes_secret_v1" "gitlab_external_postgres_password" {
     name      = "gitlab-external-postgres-password"
     namespace = var.namespace
   }
-
-  data = {
-    password = var.postgres_password_secret_data # Recebe a senha base64-encoded do módulo postgres
-  }
   type = "Opaque"
+  data = {
+    password = base64encode(var.postgres_password_secret_data)
+  }
 }
-
 
 resource "kubernetes_secret_v1" "gitlab_redis_password" {
   metadata {
@@ -57,22 +55,23 @@ resource "kubernetes_secret_v1" "gitlab_redis_password" {
 # --- HELM RELEASE GITLAB ---
 
 resource "helm_release" "gitlab" {
-  name      = "gitlab"
-  chart     = "${path.module}/gitlab"
-  version   = "9.0.0"
-  namespace = var.namespace
+  name       = "gitlab"
+  chart      = "gitlab"
+  repository = "https://charts.gitlab.io/"
+  version    = "9.0.0"
+  namespace  = var.namespace
 
   timeout         = 1800
-  wait            = true # Changed to true to wait for GitLab to be ready
+  wait            = true
   wait_for_jobs   = false
   cleanup_on_fail = true
-  atomic          = false
   max_history     = 3
 
   depends_on = [
-    kubernetes_secret_v1.gitlab_external_postgres_password, # Nova dependência para o secret da senha do Postgres
+    kubernetes_secret_v1.gitlab_external_postgres_password,
     kubernetes_secret_v1.gitlab_root_secret,
     kubernetes_secret_v1.gitlab_redis_password,
+    kubernetes_secret_v1.gitlab_minio_secret
   ]
 
   values = [
@@ -89,7 +88,7 @@ resource "helm_release" "gitlab" {
       hosts:
         domain: ${var.domain_name}
         gitlab:
-          name: ${var.domain_name}
+          name: gitlab.${var.domain_name}
         https: true
 
       redis:
@@ -99,26 +98,22 @@ resource "helm_release" "gitlab" {
           secret: gitlab-redis-password
           key: password
 
-      # Configuração para usar o PostgreSQL externo
       psql:
-        host: postgres.postgres.svc.cluster.local # Nome do serviço PostgreSQL no namespace 'postgres'
+        host: postgres.postgres.svc.cluster.local
         port: 5433
-        username: postgres # Usuário configurado no módulo postgres
-        database: gitlabhq_production # Banco de dados para o GitLab
+        username: postgres
+        database: gitlabhq_production
         password:
-          secret: gitlab-external-postgres-password # Nome do secret que criamos
-          key: password # Chave dentro do secret que contém a senha
+          secret: gitlab-external-postgres-password
+          key: password
 
-    # Desativa componentes internos para usar os externos (ou economizar RAM)
     certmanager: { install: false }
-    certmanager-issuer: { install: false }
     redis: { install: false }
-    postgresql: { install: false } # Desativa o PostgreSQL interno, pois usaremos o externo
+    postgresql: { install: false }
     nginx-ingress: { enabled: false }
     prometheus: { install: false }
     gitlab-runner: { install: false }
 
-    # Otimização de recursos para k3d local
     gitlab:
       webservice:
         minReplicas: 1
@@ -147,6 +142,11 @@ resource "helm_release" "gitlab" {
           requests:
             cpu: 300m
             memory: 1Gi
+        backups:
+          objectStorage:
+            config:
+              secret: gitlab-minio-secret
+              key: connection
 
       gitaly:
         resources:
@@ -174,10 +174,10 @@ resource "helm_release" "gitlab" {
   ]
 }
 
-# --- Wait for GitLab Webservice to be available ---
+# --- AUTOMAÇÃO PÓS-INSTALL ---
+
 resource "null_resource" "wait_for_gitlab_webservice" {
   depends_on = [helm_release.gitlab]
-
   provisioner "local-exec" {
     command = "kubectl wait --for=condition=available deployment/gitlab-webservice-default -n ${var.namespace} --timeout=900s"
     environment = {
@@ -186,61 +186,37 @@ resource "null_resource" "wait_for_gitlab_webservice" {
   }
 }
 
-# --- Retrieve GitLab Runner Token ---
-resource "null_resource" "get_gitlab_runner_token" {
+data "external" "gitlab_runner_token" {
   depends_on = [null_resource.wait_for_gitlab_webservice]
 
-  provisioner "local-exec" {
-    command = <<EOT
-      set -euo pipefail
+  program = ["bash", "-c", <<-EOT
+    export KUBECONFIG="${path.cwd}/.k3d_kubeconfig"
+    set -euo pipefail
 
-      echo "Waiting for GitLab toolbox pod to be ready..."
-      kubectl wait --for=condition=ready pod -l app=toolbox,release=gitlab -n ${var.namespace} --timeout=600s
+    kubectl wait --for=condition=ready pod -l app=toolbox,release=gitlab -n ${var.namespace} --timeout=600s > /dev/null 2>&1
 
-      TOOLBOX_POD=$(kubectl get pod -l app=toolbox,release=gitlab -n ${var.namespace} -o jsonpath='{.items[0].metadata.name}')
-      if [ -z "$TOOLBOX_POD" ]; then
-        echo "Error: GitLab toolbox pod not found." >&2
-        exit 1
-      fi
+    TOOLBOX_POD=$(kubectl get pod -l app=toolbox,release=gitlab -n ${var.namespace} -o jsonpath='{.items[0].metadata.name}')
 
-      echo "Retrieving GitLab Runner registration token from $TOOLBOX_POD..."
-      RUNNER_TOKEN=$(kubectl exec -it "$TOOLBOX_POD" -n ${var.namespace} -- gitlab-rails runner_registration_token)
-      if [ -z "$RUNNER_TOKEN" ]; then
-        echo "Error: Failed to retrieve GitLab Runner token." >&2
-        exit 1
-      fi
+    RUNNER_TOKEN=$(kubectl exec "$TOOLBOX_POD" -n ${var.namespace} -- gitlab-rails runner_registration_token | tail -n 1 | tr -d '\r')
 
-      echo "$RUNNER_TOKEN" > "${path.module}/.gitlab_runner_token"
-      echo "GitLab Runner token saved to ${path.module}/.gitlab_runner_token"
-    EOT
-    environment = {
-      KUBECONFIG = "${path.cwd}/.k3d_kubeconfig"
-    }
-  }
-
-  triggers = {
-    gitlab_release_version = helm_release.gitlab.version
-  }
+    jq -n --arg token "$RUNNER_TOKEN" '{"token": $token}'
+  EOT
+  ]
 }
 
-# --- GITLAB RUNNER ---
-
 resource "helm_release" "gitlab_runner" {
-  depends_on = [
-    helm_release.gitlab,
-    null_resource.get_gitlab_runner_token # Now depends on getting the token
-  ]
+  depends_on = [data.external.gitlab_runner_token]
+
   name       = "gitlab-runner"
   repository = "https://charts.gitlab.io/"
   chart      = "gitlab-runner"
   namespace  = var.namespace
   version    = "0.70.0"
-  timeout    = 900 # Increased timeout to 15 minutes
 
   values = [
     <<-YAML
     gitlabUrl: http://gitlab-webservice-default.${var.namespace}.svc.cluster.local:8181
-    runnerToken: ${file("${path.module}/.gitlab_runner_token")} # Read token from file
+    runnerRegistrationToken: ${data.external.gitlab_runner_token.result.token}
     runners:
       privileged: true
       executor: kubernetes
