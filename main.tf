@@ -20,33 +20,6 @@ module "networking" {
   depends_on = [module.k3d_cluster]
 }
 
-# --- Cloudflare Tunnel ---
-
-module "cloudflare" {
-  source                = "./modules/cloudflare"
-  domain_name           = var.domain_name
-  cloudflare_account_id = var.cloudflare_account_id
-  cloudflare_zone_id    = var.cloudflare_zone_id
-  tunnel_name           = "k3d-tunnel"
-
-  services = [
-    { hostname = "*", service = "http://traefik.traefik.svc.cluster.local:80" },
-    { hostname = "traefik", service = "http://traefik.traefik.svc.cluster.local:80" },
-    { hostname = "gitlab", service = "http://traefik.traefik.svc.cluster.local:80" },
-    { hostname = "registry", service = "http://traefik.traefik.svc.cluster.local:80" },
-    { hostname = "minio", service = "http://traefik.traefik.svc.cluster.local:80" },
-    { hostname = "minio-console", service = "http://traefik.traefik.svc.cluster.local:80" },
-    { hostname = "authentik", service = "http://traefik.traefik.svc.cluster.local:80" }
-  ]
-
-  providers = {
-    cloudflare = cloudflare
-    kubernetes = kubernetes
-  }
-
-  depends_on = [module.k3d_cluster, module.networking]
-}
-
 # --- Databases & Storage ---
 
 module "postgres" {
@@ -95,7 +68,7 @@ resource "kubernetes_namespace_v1" "gitlab" {
   depends_on = [module.k3d_cluster]
 }
 
-# Resource to wait for Traefik Middleware CRD to be established
+# Aguarda o CRD do Traefik estar pronto
 resource "null_resource" "wait_for_traefik_middleware_crd" {
   depends_on = [module.traefik]
 
@@ -107,10 +80,10 @@ resource "null_resource" "wait_for_traefik_middleware_crd" {
   }
 }
 
-# Add a short delay after CRD is established to allow Kubernetes API to fully propagate it
+# Delay para propagação do CRD
 resource "time_sleep" "wait_for_crd_propagation" {
-  depends_on = [null_resource.wait_for_traefik_middleware_crd]
-  create_duration = "30s" # Wait for 30 seconds
+  depends_on      = [null_resource.wait_for_traefik_middleware_crd]
+  create_duration = "30s"
 }
 
 resource "kubernetes_manifest" "traefik_middleware" {
@@ -133,24 +106,21 @@ resource "kubernetes_manifest" "traefik_middleware" {
   depends_on = [
     kubernetes_namespace_v1.gitlab,
     module.traefik,
-    time_sleep.wait_for_crd_propagation # Explicitly wait for CRD propagation
+    time_sleep.wait_for_crd_propagation
   ]
 }
 
-# Módulo GitLab (Ajustado com os argumentos faltantes)
+# Módulo GitLab (Ajustado para 9.0.0 / GitLab 18.0)
 module "gitlab" {
   source = "./modules/gitlab"
 
-  # Argumentos obrigatórios que estavam faltando:
-  chart_version               = "8.6.0"                                    # Versão do Chart (ajuste se necessário)
-  postgres_password_secret_data = module.postgres.postgres_password_secret_data # Passando a senha base64-encoded do output do módulo postgres
+  chart_version                 = "9.0.0"
+  postgres_password_secret_data = module.postgres.postgres_password_secret_data
 
-  # Configurações de domínio e rede
-  domain_name       = "gitlab.${var.domain_name}"
-  namespace         = kubernetes_namespace_v1.gitlab.metadata[0].name
-  trusted_proxies    = ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "127.0.0.1"]
+  domain_name     = "gitlab.${var.domain_name}"
+  namespace       = kubernetes_namespace_v1.gitlab.metadata[0].name
+  trusted_proxies = ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "127.0.0.1"]
 
-  # Credenciais e Tokens
   root_password               = var.gitlab_root_password
   minio_access_key            = var.minio_access_key
   minio_secret_key            = var.minio_secret_key
@@ -168,6 +138,39 @@ module "gitlab" {
     module.postgres,
     module.cloudflare,
     kubernetes_manifest.traefik_middleware,
-    kubernetes_namespace_v1.gitlab # Adicionado dependência no namespace do GitLab
+    kubernetes_namespace_v1.gitlab
   ]
+}
+
+# --- Cloudflare Tunnel (Ajustado com ordem de precedência) ---
+
+module "cloudflare" {
+  source                = "./modules/cloudflare"
+  domain_name           = var.domain_name
+  cloudflare_account_id = var.cloudflare_account_id
+  cloudflare_zone_id    = var.cloudflare_zone_id
+  tunnel_name           = "k3d-tunnel"
+
+  services = [
+    # 1. Rotas Específicas primeiro (Precedência alta)
+    { hostname = "traefik",       service = "http://traefik.traefik.svc.cluster.local:80" },
+    { hostname = "gitlab",        service = "http://traefik.traefik.svc.cluster.local:80" },
+    { hostname = "registry",      service = "http://traefik.traefik.svc.cluster.local:80" },
+    { hostname = "minio",         service = "http://traefik.traefik.svc.cluster.local:80" },
+    { hostname = "minio-console", service = "http://traefik.traefik.svc.cluster.local:80" },
+    { hostname = "authentik",     service = "http://traefik.traefik.svc.cluster.local:80" },
+
+    # 2. Domínio Raiz (avocadotech.site)
+    { hostname = "",              service = "http://traefik.traefik.svc.cluster.local:80" },
+
+    # 3. Wildcard por último (Catch-all)
+    { hostname = "*",             service = "http://traefik.traefik.svc.cluster.local:80" }
+  ]
+
+  providers = {
+    cloudflare = cloudflare
+    kubernetes = kubernetes
+  }
+
+  depends_on = [module.k3d_cluster, module.networking]
 }

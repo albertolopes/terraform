@@ -1,5 +1,3 @@
-# modules/cloudflare/main.tf
-
 terraform {
   required_providers {
     cloudflare = {
@@ -12,48 +10,44 @@ terraform {
   }
 }
 
-# 1. Gerar uma senha forte para o túnel automaticamente
 resource "random_password" "tunnel_secret" {
   length  = 64
   special = false
 }
 
-# 2. Criar o Túnel Cloudflare (Atualizado para Zero Trust)
 resource "cloudflare_zero_trust_tunnel_cloudflared" "k3d_tunnel" {
   account_id = var.cloudflare_account_id
   name       = var.tunnel_name
   secret     = base64encode(random_password.tunnel_secret.result)
 }
 
-# 3. Configurar os Aliases (Ingress Rules) do Túnel (Atualizado)
-# Isso mapeia o domínio externo para o serviço interno do Kubernetes
 resource "cloudflare_zero_trust_tunnel_cloudflared_config" "k3d_config" {
   account_id = var.cloudflare_account_id
   tunnel_id  = cloudflare_zero_trust_tunnel_cloudflared.k3d_tunnel.id
 
   config {
-    # Mapeamento Dinâmico para o Bot, GitLab, etc.
     dynamic "ingress_rule" {
       for_each = var.services
       content {
-        hostname = "${ingress_rule.value.hostname}.${var.domain_name}"
+        hostname = ingress_rule.value.hostname == "" ? var.domain_name : "${ingress_rule.value.hostname}.${var.domain_name}"
         service  = ingress_rule.value.service
       }
     }
 
-    # Regra de Fallback (Obrigatória: retorna 404 para subdomínios não mapeados)
+    # Regra de Fallback (Obrigatória)
     ingress_rule {
       service = "http_status:404"
     }
   }
 }
 
-# 4. Criar os registros CNAME no Cloudflare apontando para o Túnel
+# 4. Criar os registros CNAME no Cloudflare
 resource "cloudflare_record" "tunnel_cnames" {
   for_each = { for s in var.services : s.hostname => s }
 
   zone_id         = var.cloudflare_zone_id
-  name            = each.value.hostname
+  # Se o hostname for vazio (raiz), o Cloudflare espera "@" ou o nome do domínio.
+  name            = each.value.hostname == "" ? "@" : each.value.hostname
   type            = "CNAME"
   content         = "${cloudflare_zero_trust_tunnel_cloudflared.k3d_tunnel.id}.cfargotunnel.com"
   proxied         = true
@@ -68,8 +62,6 @@ resource "kubernetes_secret_v1" "tunnel_token" {
   }
 
   data = {
-    # O novo recurso usa tunnel_token em vez de apenas token em algumas saídas,
-    # mas o provider 4.0 mapeou isso corretamente.
     token = cloudflare_zero_trust_tunnel_cloudflared.k3d_tunnel.tunnel_token
   }
 }
@@ -85,7 +77,7 @@ resource "kubernetes_deployment_v1" "cloudflared" {
   }
 
   spec {
-    replicas = 1 # Reduzido para evitar conflitos iniciais
+    replicas = 1
     selector {
       match_labels = {
         app = "cloudflared"
@@ -103,7 +95,6 @@ resource "kubernetes_deployment_v1" "cloudflared" {
         container {
           name  = "cloudflared"
           image = "cloudflare/cloudflared:latest"
-          # Forçando o protocolo http2 que geralmente é mais estável no k3d local
           args  = ["tunnel", "--no-autoupdate", "--metrics", "0.0.0.0:2000", "--protocol", "http2", "run"]
 
           env {
@@ -114,6 +105,15 @@ resource "kubernetes_deployment_v1" "cloudflared" {
                 key  = "token"
               }
             }
+          }
+
+          liveness_probe {
+            http_get {
+              path = "/ready"
+              port = 2000
+            }
+            initial_delay_seconds = 10
+            period_seconds        = 10
           }
         }
       }
