@@ -244,12 +244,28 @@ data "external" "gitlab_runner_token" {
     export KUBECONFIG="${path.cwd}/.k3d_kubeconfig"
     set -euo pipefail
 
-    kubectl wait --for=condition=ready pod -l app=toolbox,release=gitlab -n ${var.namespace} --timeout=600s > /dev/null 2>&1
+    # 1. Tenta encontrar o pod usando o label novo (toolbox) ou o antigo (task-runner)
+    TOOLBOX_POD=$(kubectl get pod -l app=toolbox,release=gitlab -n ${var.namespace} -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || echo "")
 
-    TOOLBOX_POD=$(kubectl get pod -l app=toolbox,release=gitlab -n ${var.namespace} -o jsonpath='{.items[0].metadata.name}')
+    if [ -z "$TOOLBOX_POD" ]; then
+      TOOLBOX_POD=$(kubectl get pod -l app=task-runner,release=gitlab -n ${var.namespace} -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || echo "")
+    fi
 
-    RUNNER_TOKEN=$(kubectl exec "$TOOLBOX_POD" -n ${var.namespace} -c toolbox -- gitlab-rails runner "puts ApplicationSetting.current.runners_registration_token" | tail -n 1 | tr -d '\r')
+    # 2. Se o pod não existir (pods parados), retorna um JSON vazio para não quebrar o Terraform
+    # Mas avisamos no stderr para você saber o que houve
+    if [ -z "$TOOLBOX_POD" ]; then
+       echo "ERRO: Nenhum pod de toolbox/task-runner encontrado no namespace ${var.namespace}. Garanta que o GitLab esteja rodando." >&2
+       echo '{"token": ""}'
+       exit 0
+    fi
 
+    # 3. Aguarda o pod ficar pronto (caso esteja subindo)
+    kubectl wait --for=condition=ready pod "$TOOLBOX_POD" -n ${var.namespace} --timeout=60s > /dev/null 2>&1 || true
+
+    # 4. Extrai o token
+    RUNNER_TOKEN=$(kubectl exec "$TOOLBOX_POD" -n ${var.namespace} -c toolbox -- gitlab-rails runner "puts ApplicationSetting.current.runners_registration_token" 2>/dev/null | tail -n 1 | tr -d '\r' || echo "")
+
+    # 5. Retorna o JSON obrigatório para o Terraform
     jq -n --arg token "$RUNNER_TOKEN" '{"token": $token}'
   EOT
   ]
