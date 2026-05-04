@@ -197,7 +197,7 @@ resource "kubernetes_role_v1" "gitlab_runner_role" {
 
   rule {
     api_groups = [""]
-    resources  = ["pods", "pods/exec", "secrets", "configmaps"]
+    resources  = ["pods", "pods/exec", "pods/attach", "pods/status", "secrets", "configmaps"]
     verbs      = ["get", "list", "watch", "create", "delete", "update", "patch"]
   }
 
@@ -206,8 +206,16 @@ resource "kubernetes_role_v1" "gitlab_runner_role" {
     resources  = ["pods/log"]
     verbs      = ["get", "list"]
   }
+
+  # Necessário para o executor Kubernetes gerenciar os eventos dos pods de build
+  rule {
+    api_groups = [""]
+    resources  = ["events"]
+    verbs      = ["watch", "list"]
+  }
 }
 
+# O Binding permanece o mesmo, vinculando ao 'default'
 resource "kubernetes_role_binding_v1" "gitlab_runner_role_binding" {
   metadata {
     name      = "gitlab-runner-role-binding"
