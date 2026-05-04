@@ -50,7 +50,7 @@ resource "kubernetes_secret_v1" "gitlab_redis_password" {
   }
   type = "Opaque"
   data = {
-    "password" = base64encode(var.redis_password)
+    "password" = var.redis_password
   }
 }
 
