@@ -117,7 +117,7 @@ module "gitlab" {
   chart_version                 = "9.0.0"
   postgres_password_secret_data = module.postgres.postgres_password_secret_data
 
-  domain_name     = "gitlab.${var.domain_name}"
+  domain_name     = var.domain_name
   namespace       = kubernetes_namespace_v1.gitlab.metadata[0].name
   trusted_proxies = ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "127.0.0.1"]
 
@@ -152,7 +152,6 @@ module "cloudflare" {
   tunnel_name           = "k3d-tunnel"
 
   services = [
-    # 1. Rotas Específicas primeiro (Precedência alta)
     { hostname = "traefik",       service = "http://traefik.traefik.svc.cluster.local:80" },
     { hostname = "gitlab",        service = "http://traefik.traefik.svc.cluster.local:80" },
     { hostname = "registry",      service = "http://traefik.traefik.svc.cluster.local:80" },
@@ -160,10 +159,8 @@ module "cloudflare" {
     { hostname = "minio-console", service = "http://traefik.traefik.svc.cluster.local:80" },
     { hostname = "authentik",     service = "http://traefik.traefik.svc.cluster.local:80" },
 
-    # 2. Domínio Raiz (avocadotech.site)
     { hostname = "",              service = "http://traefik.traefik.svc.cluster.local:80" },
 
-    # 3. Wildcard por último (Catch-all)
     { hostname = "*",             service = "http://traefik.traefik.svc.cluster.local:80" }
   ]
 
