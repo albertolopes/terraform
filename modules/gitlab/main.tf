@@ -196,7 +196,6 @@ resource "kubernetes_role_v1" "gitlab_runner_role" {
   }
 
   rule {
-    # Permite gerenciar pods e segredos (necessário para o executor Kubernetes)
     api_groups = [""]
     resources  = ["pods", "pods/exec", "secrets", "configmaps"]
     verbs      = ["get", "list", "watch", "create", "delete", "update", "patch"]
@@ -237,12 +236,10 @@ data "external" "gitlab_runner_token" {
     export KUBECONFIG="${path.cwd}/.k3d_kubeconfig"
     set -euo pipefail
 
-    # Aguarda o pod Toolbox
     kubectl wait --for=condition=ready pod -l app=toolbox,release=gitlab -n ${var.namespace} --timeout=600s > /dev/null 2>&1
 
     TOOLBOX_POD=$(kubectl get pod -l app=toolbox,release=gitlab -n ${var.namespace} -o jsonpath='{.items[0].metadata.name}')
 
-    # Extração limpa via Ruby e container toolbox explícito
     RUNNER_TOKEN=$(kubectl exec "$TOOLBOX_POD" -n ${var.namespace} -c toolbox -- gitlab-rails runner "puts ApplicationSetting.current.runners_registration_token" | tail -n 1 | tr -d '\r')
 
     jq -n --arg token "$RUNNER_TOKEN" '{"token": $token}'
@@ -268,7 +265,39 @@ resource "helm_release" "gitlab_runner" {
     <<-YAML
     gitlabUrl: http://gitlab-webservice-default.${var.namespace}.svc.cluster.local:8181
     runnerRegistrationToken: ${data.external.gitlab_runner_token.result.token}
+
+    # Recursos para o Gerenciador do Runner (o Pod fixo)
+    resources:
+      requests:
+        cpu: 100m
+        memory: 128Mi
+      limits:
+        cpu: 200m
+        memory: 1.5Gi
+
     runners:
+      config: |
+        [[runners]]
+          [runners.kubernetes]
+            image = "docker:25.0"
+            privileged = true
+            # Aumenta o tempo de espera para o pod sair de Pending (padrão é 180s)
+            poll_timeout = 600
+
+            # Recursos para os containers de build (Node/Docker)
+            cpu_request = "500m"
+            memory_request = "1Gi"
+            cpu_limit = "1000m"
+            memory_limit = "2Gi"
+
+            # Recursos para o container 'helper' do GitLab
+            helper_cpu_request = "100m"
+            helper_memory_request = "128Mi"
+
+            # Recursos para serviços (svc-0, que é o seu DinD)
+            service_cpu_request = "400m"
+            service_memory_request = "1Gi"
+
       privileged: true
       executor: kubernetes
       runUntagged: true
