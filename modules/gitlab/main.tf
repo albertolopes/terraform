@@ -187,16 +187,62 @@ resource "null_resource" "wait_for_gitlab_webservice" {
   }
 }
 
+# --- RBAC: PERMISSÕES PARA O RUNNER ---
+
+resource "kubernetes_role_v1" "gitlab_runner_role" {
+  metadata {
+    name      = "gitlab-runner-role"
+    namespace = var.namespace
+  }
+
+  rule {
+    # Permite gerenciar pods e segredos (necessário para o executor Kubernetes)
+    api_groups = [""]
+    resources  = ["pods", "pods/exec", "secrets", "configmaps"]
+    verbs      = ["get", "list", "watch", "create", "delete", "update", "patch"]
+  }
+
+  rule {
+    api_groups = [""]
+    resources  = ["pods/log"]
+    verbs      = ["get", "list"]
+  }
+}
+
+resource "kubernetes_role_binding_v1" "gitlab_runner_role_binding" {
+  metadata {
+    name      = "gitlab-runner-role-binding"
+    namespace = var.namespace
+  }
+
+  role_ref {
+    api_group = "rbac.authorization.k8s.io"
+    kind      = "Role"
+    name      = kubernetes_role_v1.gitlab_runner_role.metadata[0].name
+  }
+
+  subject {
+    kind      = "ServiceAccount"
+    name      = "default"
+    namespace = var.namespace
+  }
+}
+
+# --- EXTRAÇÃO DO TOKEN ---
+
 data "external" "gitlab_runner_token" {
   depends_on = [null_resource.wait_for_gitlab_webservice]
 
   program = ["bash", "-c", <<-EOT
     export KUBECONFIG="${path.cwd}/.k3d_kubeconfig"
     set -euo pipefail
+
+    # Aguarda o pod Toolbox
     kubectl wait --for=condition=ready pod -l app=toolbox,release=gitlab -n ${var.namespace} --timeout=600s > /dev/null 2>&1
 
     TOOLBOX_POD=$(kubectl get pod -l app=toolbox,release=gitlab -n ${var.namespace} -o jsonpath='{.items[0].metadata.name}')
 
+    # Extração limpa via Ruby e container toolbox explícito
     RUNNER_TOKEN=$(kubectl exec "$TOOLBOX_POD" -n ${var.namespace} -c toolbox -- gitlab-rails runner "puts ApplicationSetting.current.runners_registration_token" | tail -n 1 | tr -d '\r')
 
     jq -n --arg token "$RUNNER_TOKEN" '{"token": $token}'
@@ -204,8 +250,13 @@ data "external" "gitlab_runner_token" {
   ]
 }
 
+# --- HELM RELEASE GITLAB RUNNER ---
+
 resource "helm_release" "gitlab_runner" {
-  depends_on = [data.external.gitlab_runner_token]
+  depends_on = [
+    data.external.gitlab_runner_token,
+    kubernetes_role_binding_v1.gitlab_runner_role_binding
+  ]
 
   name       = "gitlab-runner"
   repository = "https://charts.gitlab.io/"
