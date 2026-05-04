@@ -196,6 +196,7 @@ resource "kubernetes_role_v1" "gitlab_runner_role" {
   }
 
   rule {
+    # Adicionado "pods/attach" e "pods/status" para permitir a estratégia de execução do GitLab
     api_groups = [""]
     resources  = ["pods", "pods/exec", "pods/attach", "pods/status", "secrets", "configmaps"]
     verbs      = ["get", "list", "watch", "create", "delete", "update", "patch"]
@@ -215,7 +216,6 @@ resource "kubernetes_role_v1" "gitlab_runner_role" {
   }
 }
 
-# O Binding permanece o mesmo, vinculando ao 'default'
 resource "kubernetes_role_binding_v1" "gitlab_runner_role_binding" {
   metadata {
     name      = "gitlab-runner-role-binding"
@@ -274,7 +274,6 @@ resource "helm_release" "gitlab_runner" {
     gitlabUrl: http://gitlab-webservice-default.${var.namespace}.svc.cluster.local:8181
     runnerRegistrationToken: ${data.external.gitlab_runner_token.result.token}
 
-    # Recursos para o Gerenciador do Runner (o Pod fixo)
     resources:
       requests:
         cpu: 100m
@@ -289,20 +288,22 @@ resource "helm_release" "gitlab_runner" {
           [runners.kubernetes]
             image = "docker:25.0"
             privileged = true
-            # Aumenta o tempo de espera para o pod sair de Pending (padrão é 180s)
             poll_timeout = 600
 
-            # Recursos para os containers de build (Node/Docker)
+            # Permite usar as estratégias de Git nativas do GitLab sem falha de DNS/Túnel
+            clone_url = "http://gitlab-webservice-default.${var.namespace}.svc.cluster.local:8181"
+
+            # Recursos para os containers de build
             cpu_request = "500m"
             memory_request = "1Gi"
             cpu_limit = "1000m"
             memory_limit = "2Gi"
 
-            # Recursos para o container 'helper' do GitLab
+            # Recursos para o container helper
             helper_cpu_request = "100m"
             helper_memory_request = "128Mi"
 
-            # Recursos para serviços (svc-0, que é o seu DinD)
+            # Recursos para o DinD (svc-0)
             service_cpu_request = "400m"
             service_memory_request = "1Gi"
 
