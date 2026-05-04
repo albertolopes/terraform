@@ -193,12 +193,11 @@ data "external" "gitlab_runner_token" {
   program = ["bash", "-c", <<-EOT
     export KUBECONFIG="${path.cwd}/.k3d_kubeconfig"
     set -euo pipefail
-
     kubectl wait --for=condition=ready pod -l app=toolbox,release=gitlab -n ${var.namespace} --timeout=600s > /dev/null 2>&1
 
     TOOLBOX_POD=$(kubectl get pod -l app=toolbox,release=gitlab -n ${var.namespace} -o jsonpath='{.items[0].metadata.name}')
 
-    RUNNER_TOKEN=$(kubectl exec "$TOOLBOX_POD" -n ${var.namespace} -- gitlab-rails runner_registration_token | tail -n 1 | tr -d '\r')
+    RUNNER_TOKEN=$(kubectl exec "$TOOLBOX_POD" -n ${var.namespace} -c toolbox -- gitlab-rails runner "puts ApplicationSetting.current.runners_registration_token" | tail -n 1 | tr -d '\r')
 
     jq -n --arg token "$RUNNER_TOKEN" '{"token": $token}'
   EOT
@@ -221,6 +220,7 @@ resource "helm_release" "gitlab_runner" {
     runners:
       privileged: true
       executor: kubernetes
+      runUntagged: true
     YAML
   ]
 }
