@@ -54,29 +54,6 @@ resource "kubernetes_secret_v1" "gitlab_redis_password" {
   }
 }
 
-# ALTERAÇÃO 1: Adição do Secret do Registry (com aspas na URL para evitar erro de parse)
-resource "kubernetes_secret_v1" "registry_storage_secret" {
-  metadata {
-    name      = "registry-storage-secret"
-    namespace = var.namespace
-  }
-  type = "Opaque"
-  data = {
-    "config" = base64encode(<<-EOT
-s3:
-        accesskey: "${var.minio_access_key}"
-        secretkey: "${var.minio_secret_key}"
-        region: "us-east-1"
-        regionendpoint: "http://minio.minio.svc.cluster.local:9000"
-        bucket: "registry"
-        v4auth: true
-        secure: false
-        pathstyle: true
-      EOT
-    )
-  }
-}
-
 # --- HELM RELEASE GITLAB ---
 
 resource "helm_release" "gitlab" {
@@ -96,7 +73,6 @@ resource "helm_release" "gitlab" {
     kubernetes_secret_v1.gitlab_root_secret,
     kubernetes_secret_v1.gitlab_redis_password,
     kubernetes_secret_v1.gitlab_minio_secret,
-    kubernetes_secret_v1.registry_storage_secret
   ]
 
   values = [
@@ -118,6 +94,20 @@ resource "helm_release" "gitlab" {
       registry:
         enabled: true
         bucket: "registry"
+        # Configuração do armazenamento S3 diretamente nos valores do Helm
+        storage:
+          driver: s3
+          s3:
+            accesskey: "${var.minio_access_key}"
+            secretkey: "${var.minio_secret_key}"
+            region: "us-east-1"
+            regionendpoint: "http://minio.minio.svc.cluster.local:9000"
+            bucket: "registry"
+            v4auth: true
+            secure: false
+            pathstyle: true
+            # secure: false # Já definido acima, mas pode ser necessário aqui dependendo da versão do chart
+            # v4auth: true # Já definido acima
 
       redis:
         host: redis.redis.svc.cluster.local
@@ -194,15 +184,6 @@ resource "helm_release" "gitlab" {
       minReplicas: 1
       maxReplicas: 1
 
-    # ALTERAÇÃO 2: Apontando para o secret criado acima
-    registry:
-      enabled: true
-      hpa:
-        minReplicas: 1
-        maxReplicas: 1
-      storage:
-        secret: "registry-storage-secret"
-        key: "config"
     YAML
   ]
 }
