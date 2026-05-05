@@ -19,7 +19,7 @@ EOT
   }
 }
 
-# NOVO SECRET: Resolve o erro de parse do YAML e unifica o storage do Registry
+# SECRET DO REGISTRY: Removidas aspas e unificado o endpoint para o serviço do MinIO
 resource "kubernetes_secret_v1" "registry_storage_secret" {
   metadata {
     name      = "registry-storage-secret"
@@ -29,11 +29,11 @@ resource "kubernetes_secret_v1" "registry_storage_secret" {
   data = {
     "config" = base64encode(<<-EOT
 s3:
-  accesskey: "${var.minio_access_key}"
-  secretkey: "${var.minio_secret_key}"
-  region: "us-east-1"
-  regionendpoint: "http://gitlab-minio-svc.gitlab.svc:9000"
-  bucket: "registry"
+  accesskey: ${var.minio_access_key}
+  secretkey: ${var.minio_secret_key}
+  region: us-east-1
+  regionendpoint: http://minio.minio.svc.cluster.local:9000
+  bucket: registry
   v4auth: true
   secure: false
   pathstyle: true
@@ -94,7 +94,7 @@ resource "helm_release" "gitlab" {
     kubernetes_secret_v1.gitlab_root_secret,
     kubernetes_secret_v1.gitlab_redis_password,
     kubernetes_secret_v1.gitlab_minio_secret,
-    kubernetes_secret_v1.registry_storage_secret # Adicionado dependência
+    kubernetes_secret_v1.registry_storage_secret
   ]
 
   values = [
@@ -117,7 +117,6 @@ resource "helm_release" "gitlab" {
       registry:
         enabled: true
         bucket: "registry"
-        # Matando o erro de 'untrusted key' forçando o mesmo emissor
         issuer: "gitlab-issuer"
 
       redis:
@@ -154,7 +153,6 @@ resource "helm_release" "gitlab" {
           limits:
             cpu: 1500m
             memory: 4Gi
-
       sidekiq:
         minReplicas: 1
         maxReplicas: 1
@@ -165,7 +163,6 @@ resource "helm_release" "gitlab" {
           limits:
             cpu: 800m
             memory: 2Gi
-
       toolbox:
         resources:
           requests:
@@ -176,7 +173,6 @@ resource "helm_release" "gitlab" {
             config:
               secret: gitlab-minio-secret
               key: connection
-
       gitaly:
         resources:
           requests:
@@ -186,7 +182,6 @@ resource "helm_release" "gitlab" {
           enabled: true
           storageClass: "local-path"
           size: 50Gi
-
       gitlab-shell:
         minReplicas: 1
         maxReplicas: 1
@@ -195,16 +190,23 @@ resource "helm_release" "gitlab" {
       minReplicas: 1
       maxReplicas: 1
 
-    # AJUSTE REGISTRY: Aponta para o segredo e corrige a autenticação interna
+    # CONFIGURAÇÃO DO REGISTRY (Fora do global)
     registry:
       enabled: true
       hpa:
         minReplicas: 1
         maxReplicas: 1
+      # Aumentado para evitar CrashLoopBackOff por falta de RAM
+      resources:
+        requests:
+          cpu: 100m
+          memory: 256Mi
+        limits:
+          cpu: 300m
+          memory: 512Mi
       storage:
         secret: "registry-storage-secret"
         key: "config"
-      # Força a validação do token no endpoint interno correto
       authEndpoint: "http://gitlab-webservice-default.${var.namespace}.svc.cluster.local:8181"
       tokenIssuer: "gitlab-issuer"
 
@@ -233,7 +235,6 @@ resource "kubernetes_role_v1" "gitlab_runner_role" {
   }
 
   rule {
-    # Adicionado "pods/attach" e "pods/status" para permitir a estratégia de execução do GitLab
     api_groups = [""]
     resources  = ["pods", "pods/exec", "pods/attach", "pods/status", "secrets", "configmaps"]
     verbs      = ["get", "list", "watch", "create", "delete", "update", "patch"]
@@ -245,7 +246,6 @@ resource "kubernetes_role_v1" "gitlab_runner_role" {
     verbs      = ["get", "list"]
   }
 
-  # Necessário para o executor Kubernetes gerenciar os eventos dos pods de build
   rule {
     api_groups = [""]
     resources  = ["events"]
@@ -281,28 +281,21 @@ data "external" "gitlab_runner_token" {
     export KUBECONFIG="${path.cwd}/.k3d_kubeconfig"
     set -euo pipefail
 
-    # 1. Tenta encontrar o pod usando o label novo (toolbox) ou o antigo (task-runner)
     TOOLBOX_POD=$(kubectl get pod -l app=toolbox,release=gitlab -n ${var.namespace} -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || echo "")
 
     if [ -z "$TOOLBOX_POD" ]; then
       TOOLBOX_POD=$(kubectl get pod -l app=task-runner,release=gitlab -n ${var.namespace} -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || echo "")
     fi
 
-    # 2. Se o pod não existir (pods parados), retorna um JSON vazio para não quebrar o Terraform
-    # Mas avisamos no stderr para você saber o que houve
     if [ -z "$TOOLBOX_POD" ]; then
-       echo "ERRO: Nenhum pod de toolbox/task-runner encontrado no namespace ${var.namespace}. Garanta que o GitLab esteja rodando." >&2
        echo '{"token": ""}'
        exit 0
     fi
 
-    # 3. Aguarda o pod ficar pronto (caso esteja subindo)
     kubectl wait --for=condition=ready pod "$TOOLBOX_POD" -n ${var.namespace} --timeout=60s > /dev/null 2>&1 || true
 
-    # 4. Extrai o token
     RUNNER_TOKEN=$(kubectl exec "$TOOLBOX_POD" -n ${var.namespace} -c toolbox -- gitlab-rails runner "puts ApplicationSetting.current.runners_registration_token" 2>/dev/null | tail -n 1 | tr -d '\r' || echo "")
 
-    # 5. Retorna o JSON obrigatório para o Terraform
     jq -n --arg token "$RUNNER_TOKEN" '{"token": $token}'
   EOT
   ]
@@ -342,21 +335,13 @@ resource "helm_release" "gitlab_runner" {
             image = "docker:25.0"
             privileged = true
             poll_timeout = 600
-
-            # Permite usar as estratégias de Git nativas do GitLab sem falha de DNS/Túnel
             clone_url = "http://gitlab-webservice-default.${var.namespace}.svc.cluster.local:8181"
-
-            # Recursos para os containers de build
             cpu_request = "500m"
             memory_request = "1Gi"
             cpu_limit = "1000m"
             memory_limit = "2Gi"
-
-            # Recursos para o container helper
             helper_cpu_request = "100m"
             helper_memory_request = "128Mi"
-
-            # Recursos para o DinD (svc-0)
             service_cpu_request = "400m"
             service_memory_request = "1Gi"
 
