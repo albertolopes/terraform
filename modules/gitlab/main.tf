@@ -61,17 +61,18 @@ resource "kubernetes_secret_v1" "registry_storage_secret" {
   }
   type = "Opaque"
   data = {
-    "storage" = base64encode(<<-EOT
-s3:
-  accesskey: ${var.minio_access_key}
-  secretkey: ${var.minio_secret_key}
-  region: us-east-1
-  regionendpoint: http://minio.minio.svc.cluster.local:9000
-  bucket: registry
-  v4auth: true
-  secure: false
-  pathstyle: true
-EOT
+    # Usando 'config' como chave e aspas nos valores para evitar erro de parse
+    "config" = base64encode(<<-EOT
+      s3:
+        accesskey: "${var.minio_access_key}"
+        secretkey: "${var.minio_secret_key}"
+        region: "us-east-1"
+        regionendpoint: "http://minio.minio.svc.cluster.local:9000"
+        bucket: "registry"
+        v4auth: true
+        secure: false
+        pathstyle: true
+      EOT
     )
   }
 }
@@ -94,7 +95,8 @@ resource "helm_release" "gitlab" {
     kubernetes_secret_v1.gitlab_external_postgres_password,
     kubernetes_secret_v1.gitlab_root_secret,
     kubernetes_secret_v1.gitlab_redis_password,
-    kubernetes_secret_v1.gitlab_minio_secret
+    kubernetes_secret_v1.gitlab_minio_secret,
+    kubernetes_secret_v1.registry_storage_secret
   ]
 
   values = [
@@ -198,8 +200,8 @@ resource "helm_release" "gitlab" {
         minReplicas: 1
         maxReplicas: 1
       storage:
-        secret: registry-storage-secret
-        key: storage
+        secret: "registry-storage-secret"
+        key: "config"
     YAML
   ]
 }
