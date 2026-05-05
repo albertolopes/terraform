@@ -93,7 +93,7 @@ resource "helm_release" "gitlab" {
         https: true
       registry:
         enabled: true
-        bucket: registry 
+        bucket: registry
 
       redis:
         host: redis.redis.svc.cluster.local
@@ -176,8 +176,15 @@ resource "helm_release" "gitlab" {
         minReplicas: 1
         maxReplicas: 1
       storage:
-        secret: gitlab-minio-secret
-        key: connection
+        s3:
+          accesskey: "${var.minio_access_key}"
+          secretkey: "${var.minio_secret_key}"
+          region: "us-east-1"
+          regionendpoint: "http://minio.minio.svc.cluster.local:9000"
+          bucket: "registry"
+          v4auth: true
+          secure: false
+          pathstyle: true
     YAML
   ]
 }
