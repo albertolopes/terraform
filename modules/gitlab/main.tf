@@ -93,7 +93,7 @@ resource "helm_release" "gitlab" {
         https: true
       registry:
         enabled: true
-        bucket: registry
+        bucket: "registry"
 
       redis:
         host: redis.redis.svc.cluster.local
