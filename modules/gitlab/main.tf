@@ -91,6 +91,9 @@ resource "helm_release" "gitlab" {
         gitlab:
           name: gitlab.${var.domain_name}
         https: true
+      registry:
+        enabled: true
+        bucket: registry 
 
       redis:
         host: redis.redis.svc.cluster.local
@@ -168,9 +171,13 @@ resource "helm_release" "gitlab" {
       maxReplicas: 1
 
     registry:
+      enabled: true
       hpa:
         minReplicas: 1
         maxReplicas: 1
+      storage:
+        secret: gitlab-minio-secret
+        key: connection
     YAML
   ]
 }
