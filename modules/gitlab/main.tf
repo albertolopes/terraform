@@ -54,6 +54,7 @@ resource "kubernetes_secret_v1" "gitlab_redis_password" {
   }
 }
 
+# ALTERAÇÃO 1: Adição do Secret do Registry (com aspas na URL para evitar erro de parse)
 resource "kubernetes_secret_v1" "registry_storage_secret" {
   metadata {
     name      = "registry-storage-secret"
@@ -61,18 +62,17 @@ resource "kubernetes_secret_v1" "registry_storage_secret" {
   }
   type = "Opaque"
   data = {
-    # Usando 'config' como chave e aspas nos valores para evitar erro de parse
     "config" = base64encode(<<-EOT
-      s3:
-        accesskey: "${var.minio_access_key}"
-        secretkey: "${var.minio_secret_key}"
-        region: "us-east-1"
-        regionendpoint: "http://minio.minio.svc.cluster.local:9000"
-        bucket: "registry"
-        v4auth: true
-        secure: false
-        pathstyle: true
-      EOT
+s3:
+  accesskey: "${var.minio_access_key}"
+  secretkey: "${var.minio_secret_key}"
+  region: "us-east-1"
+  regionendpoint: "http://minio.minio.svc.cluster.local:9000"
+  bucket: "registry"
+  v4auth: true
+  secure: false
+  pathstyle: true
+EOT
     )
   }
 }
@@ -194,6 +194,7 @@ resource "helm_release" "gitlab" {
       minReplicas: 1
       maxReplicas: 1
 
+    # ALTERAÇÃO 2: Apontando para o secret criado acima
     registry:
       enabled: true
       hpa:
