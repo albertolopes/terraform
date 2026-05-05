@@ -19,6 +19,29 @@ EOT
   }
 }
 
+# NOVO SECRET: Resolve o erro de parse do YAML e unifica o storage do Registry
+resource "kubernetes_secret_v1" "registry_storage_secret" {
+  metadata {
+    name      = "registry-storage-secret"
+    namespace = var.namespace
+  }
+  type = "Opaque"
+  data = {
+    "config" = base64encode(<<-EOT
+s3:
+  accesskey: "${var.minio_access_key}"
+  secretkey: "${var.minio_secret_key}"
+  region: "us-east-1"
+  regionendpoint: "http://gitlab-minio-svc.gitlab.svc:9000"
+  bucket: "registry"
+  v4auth: true
+  secure: false
+  pathstyle: true
+EOT
+    )
+  }
+}
+
 resource "kubernetes_secret_v1" "gitlab_root_secret" {
   metadata {
     name      = "gitlab-root-secret"
@@ -37,8 +60,6 @@ resource "kubernetes_secret_v1" "gitlab_external_postgres_password" {
   }
   type = "Opaque"
   data = {
-    # Corrigido: Removido base64encode para evitar codificação dupla,
-    # já que a variável já contém o dado em base64.
     password = var.postgres_password_secret_data
   }
 }
@@ -73,6 +94,7 @@ resource "helm_release" "gitlab" {
     kubernetes_secret_v1.gitlab_root_secret,
     kubernetes_secret_v1.gitlab_redis_password,
     kubernetes_secret_v1.gitlab_minio_secret,
+    kubernetes_secret_v1.registry_storage_secret # Adicionado dependência
   ]
 
   values = [
@@ -91,23 +113,12 @@ resource "helm_release" "gitlab" {
         gitlab:
           name: gitlab.${var.domain_name}
         https: true
+
       registry:
         enabled: true
         bucket: "registry"
-        # Configuração do armazenamento S3 diretamente nos valores do Helm
-        storage:
-          driver: s3
-          s3:
-            accesskey: "${var.minio_access_key}"
-            secretkey: "${var.minio_secret_key}"
-            region: "us-east-1"
-            regionendpoint: "http://minio.minio.svc.cluster.local:9000"
-            bucket: "registry"
-            v4auth: true
-            secure: false
-            pathstyle: true
-            # secure: false # Já definido acima, mas pode ser necessário aqui dependendo da versão do chart
-            # v4auth: true # Já definido acima
+        # Matando o erro de 'untrusted key' forçando o mesmo emissor
+        issuer: "gitlab-issuer"
 
       redis:
         host: redis.redis.svc.cluster.local
@@ -183,6 +194,19 @@ resource "helm_release" "gitlab" {
     gitlab-kas:
       minReplicas: 1
       maxReplicas: 1
+
+    # AJUSTE REGISTRY: Aponta para o segredo e corrige a autenticação interna
+    registry:
+      enabled: true
+      hpa:
+        minReplicas: 1
+        maxReplicas: 1
+      storage:
+        secret: "registry-storage-secret"
+        key: "config"
+      # Força a validação do token no endpoint interno correto
+      authEndpoint: "http://gitlab-webservice-default.${var.namespace}.svc.cluster.local:8181"
+      tokenIssuer: "gitlab-issuer"
 
     YAML
   ]
