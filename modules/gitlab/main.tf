@@ -64,15 +64,15 @@ resource "kubernetes_secret_v1" "registry_storage_secret" {
   data = {
     "config" = base64encode(<<-EOT
 s3:
-  accesskey: "${var.minio_access_key}"
-  secretkey: "${var.minio_secret_key}"
-  region: "us-east-1"
-  regionendpoint: "http://minio.minio.svc.cluster.local:9000"
-  bucket: "registry"
-  v4auth: true
-  secure: false
-  pathstyle: true
-EOT
+        accesskey: "${var.minio_access_key}"
+        secretkey: "${var.minio_secret_key}"
+        region: "us-east-1"
+        regionendpoint: "http://minio.minio.svc.cluster.local:9000"
+        bucket: "registry"
+        v4auth: true
+        secure: false
+        pathstyle: true
+      EOT
     )
   }
 }
