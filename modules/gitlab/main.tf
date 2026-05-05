@@ -54,6 +54,28 @@ resource "kubernetes_secret_v1" "gitlab_redis_password" {
   }
 }
 
+resource "kubernetes_secret_v1" "registry_storage_secret" {
+  metadata {
+    name      = "registry-storage-secret"
+    namespace = var.namespace
+  }
+  type = "Opaque"
+  data = {
+    "storage" = base64encode(<<-EOT
+s3:
+  accesskey: ${var.minio_access_key}
+  secretkey: ${var.minio_secret_key}
+  region: us-east-1
+  regionendpoint: http://minio.minio.svc.cluster.local:9000
+  bucket: registry
+  v4auth: true
+  secure: false
+  pathstyle: true
+EOT
+    )
+  }
+}
+
 # --- HELM RELEASE GITLAB ---
 
 resource "helm_release" "gitlab" {
@@ -176,15 +198,8 @@ resource "helm_release" "gitlab" {
         minReplicas: 1
         maxReplicas: 1
       storage:
-        s3:
-          accesskey: "${var.minio_access_key}"
-          secretkey: "${var.minio_secret_key}"
-          region: "us-east-1"
-          regionendpoint: "http://minio.minio.svc.cluster.local:9000"
-          bucket: "registry"
-          v4auth: true
-          secure: false
-          pathstyle: true
+        secret: registry-storage-secret
+        key: storage
     YAML
   ]
 }
