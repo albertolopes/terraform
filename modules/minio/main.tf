@@ -175,13 +175,37 @@ resource "kubernetes_service_v1" "minio" {
   }
 }
 
+resource "kubernetes_manifest" "minio_tls_certificate" {
+  manifest = {
+    apiVersion = "cert-manager.io/v1"
+    kind       = "Certificate"
+    metadata = {
+      name      = "minio-tls"
+      namespace = kubernetes_namespace_v1.minio.metadata[0].name
+    }
+    spec = {
+      secretName = "minio-tls"
+      issuerRef = {
+        name = "letsencrypt-cloudflare"
+        kind = "ClusterIssuer"
+      }
+      dnsNames = [
+        "minio.${var.domain_name}",
+        "minio-console.${var.domain_name}"
+      ]
+    }
+  }
+}
 
 # Criar buckets usando um pod job
 resource "kubernetes_job_v1" "create_buckets" {
-  depends_on = [kubernetes_deployment_v1.minio]
+  depends_on = [
+    kubernetes_deployment_v1.minio,
+    kubernetes_service_v1.minio
+  ]
 
   metadata {
-    name      = "minio-create-buckets"
+    name      = "minio-create-buckets-${substr(sha256(jsonencode(kubernetes_secret_v1.minio_credentials.data)), 0, 8)}"
     namespace = kubernetes_namespace_v1.minio.metadata[0].name
   }
 
@@ -230,7 +254,7 @@ resource "null_resource" "wait_for_minio_buckets_job" {
   depends_on = [kubernetes_job_v1.create_buckets]
 
   provisioner "local-exec" {
-    command = "kubectl wait --for=condition=complete --timeout=900s job/minio-create-buckets -n minio"
+    command = "kubectl wait --for=condition=complete --timeout=900s job/${kubernetes_job_v1.create_buckets.metadata[0].name} -n minio"
     environment = {
       KUBECONFIG = "${path.cwd}/.k3d_kubeconfig"
     }
@@ -266,7 +290,7 @@ resource "kubernetes_ingress_v1" "minio" {
       }
     }
     tls {
-      secret_name = "traefik-certs"
+      secret_name = "minio-tls"
     }
   }
 }
@@ -300,7 +324,7 @@ resource "kubernetes_ingress_v1" "minio_console" {
       }
     }
     tls {
-      secret_name = "traefik-certs"
+      secret_name = "minio-tls"
     }
   }
 }

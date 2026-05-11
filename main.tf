@@ -43,7 +43,7 @@ module "minio" {
   minio_access_key = var.minio_access_key
   minio_secret_key = var.minio_secret_key
   providers        = { kubernetes = kubernetes }
-  depends_on       = [module.k3d_cluster]
+  depends_on       = [module.k3d_cluster, module.networking]
 }
 
 # --- Ingress Controller (Traefik) ---

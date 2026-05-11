@@ -73,6 +73,40 @@ resource "kubernetes_secret_v1" "gitlab_redis_password" {
   }
 }
 
+resource "kubernetes_manifest" "gitlab_tls_certificate" {
+  manifest = {
+    apiVersion = "cert-manager.io/v1"
+    kind       = "Certificate"
+    metadata = {
+      name      = "gitlab-tls"
+      namespace = var.namespace
+    }
+    spec = {
+      secretName = "gitlab-tls"
+      issuerRef = {
+        name = "letsencrypt-cloudflare"
+        kind = "ClusterIssuer"
+      }
+      dnsNames = [
+        "gitlab.${var.domain_name}",
+        "registry.${var.domain_name}",
+        "kas.${var.domain_name}"
+      ]
+    }
+  }
+}
+
+resource "null_resource" "wait_for_gitlab_tls_certificate" {
+  depends_on = [kubernetes_manifest.gitlab_tls_certificate]
+
+  provisioner "local-exec" {
+    command = "kubectl wait --for=condition=Ready certificate/gitlab-tls -n ${var.namespace} --timeout=900s"
+    environment = {
+      KUBECONFIG = "${path.cwd}/.k3d_kubeconfig"
+    }
+  }
+}
+
 # --- HELM RELEASE GITLAB ---
 
 resource "helm_release" "gitlab" {
@@ -92,7 +126,8 @@ resource "helm_release" "gitlab" {
     kubernetes_secret_v1.gitlab_root_secret,
     kubernetes_secret_v1.gitlab_redis_password,
     kubernetes_secret_v1.gitlab_minio_secret,
-    kubernetes_secret_v1.registry_storage_secret
+    kubernetes_secret_v1.registry_storage_secret,
+    null_resource.wait_for_gitlab_tls_certificate
   ]
 
   values = [
@@ -103,6 +138,9 @@ resource "helm_release" "gitlab" {
         enabled: true
         class: traefik
         configureCertmanager: false
+        tls:
+          enabled: true
+          secretName: gitlab-tls
         annotations:
           kubernetes.io/ingress.class: "traefik"
           traefik.ingress.kubernetes.io/router.middlewares: "${var.namespace}-traefik-force-https-header@kubernetescrd"
@@ -110,7 +148,13 @@ resource "helm_release" "gitlab" {
         domain: ${var.domain_name}
         gitlab:
           name: gitlab.${var.domain_name}
+        registry:
+          name: registry.${var.domain_name}
         https: true
+
+      initialRootPassword:
+        secret: gitlab-root-secret
+        key: password
 
       registry:
         enabled: true
@@ -272,40 +316,11 @@ resource "kubernetes_role_binding_v1" "gitlab_runner_role_binding" {
   }
 }
 
-# --- EXTRAÇÃO DO TOKEN ---
-
-data "external" "gitlab_runner_token" {
-  depends_on = [null_resource.wait_for_gitlab_webservice]
-
-  program = ["bash", "-c", <<-EOT
-    export KUBECONFIG="${path.cwd}/.k3d_kubeconfig"
-    set -euo pipefail
-
-    TOOLBOX_POD=$(kubectl get pod -l app=toolbox,release=gitlab -n ${var.namespace} -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || echo "")
-
-    if [ -z "$TOOLBOX_POD" ]; then
-      TOOLBOX_POD=$(kubectl get pod -l app=task-runner,release=gitlab -n ${var.namespace} -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || echo "")
-    fi
-
-    if [ -z "$TOOLBOX_POD" ]; then
-       echo '{"token": ""}'
-       exit 0
-    fi
-
-    kubectl wait --for=condition=ready pod "$TOOLBOX_POD" -n ${var.namespace} --timeout=60s > /dev/null 2>&1 || true
-
-    RUNNER_TOKEN=$(kubectl exec "$TOOLBOX_POD" -n ${var.namespace} -c toolbox -- gitlab-rails runner "puts ApplicationSetting.current.runners_registration_token" 2>/dev/null | tail -n 1 | tr -d '\r' || echo "")
-
-    jq -n --arg token "$RUNNER_TOKEN" '{"token": $token}'
-  EOT
-  ]
-}
-
 # --- HELM RELEASE GITLAB RUNNER ---
 
 resource "helm_release" "gitlab_runner" {
   depends_on = [
-    data.external.gitlab_runner_token,
+    null_resource.wait_for_gitlab_webservice,
     kubernetes_role_binding_v1.gitlab_runner_role_binding
   ]
 
@@ -318,7 +333,7 @@ resource "helm_release" "gitlab_runner" {
   values = [
     <<-YAML
     gitlabUrl: http://gitlab-webservice-default.${var.namespace}.svc.cluster.local:8181
-    runnerRegistrationToken: ${data.external.gitlab_runner_token.result.token}
+    runnerToken: "${var.runner_authentication_token}"
 
     resources:
       requests:
