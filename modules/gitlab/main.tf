@@ -7,7 +7,7 @@ resource "kubernetes_secret_v1" "gitlab_minio_secret" {
   }
   type = "Opaque"
   data = {
-    "connection" = base64encode(<<-EOT
+    "connection" = <<-EOT
 provider: AWS
 region: us-east-1
 aws_access_key_id: ${var.minio_access_key}
@@ -15,7 +15,6 @@ aws_secret_access_key: ${var.minio_secret_key}
 endpoint: http://minio.minio.svc.cluster.local:9000
 path_style: true
 EOT
-    )
   }
 }
 
@@ -27,18 +26,17 @@ resource "kubernetes_secret_v1" "registry_storage_secret" {
   }
   type = "Opaque"
   data = {
-    "config" = base64encode(<<-EOT
+    "config" = <<-EOT
 s3:
   accesskey: ${var.minio_access_key}
   secretkey: ${var.minio_secret_key}
   region: us-east-1
   regionendpoint: http://minio.minio.svc.cluster.local:9000
-  bucket: registry
+  bucket: gitlab-registry
   v4auth: true
   secure: false
   pathstyle: true
 EOT
-    )
   }
 }
 
@@ -49,7 +47,7 @@ resource "kubernetes_secret_v1" "gitlab_root_secret" {
   }
   type = "Opaque"
   data = {
-    "password" = base64encode(var.root_password != null ? var.root_password : "changeme123")
+    "password" = var.root_password != null ? var.root_password : "changeme123"
   }
 }
 
@@ -116,7 +114,7 @@ resource "helm_release" "gitlab" {
 
       registry:
         enabled: true
-        bucket: "registry"
+        bucket: "gitlab-registry"
         issuer: "gitlab-issuer"
 
       redis:
@@ -193,6 +191,8 @@ resource "helm_release" "gitlab" {
     # CONFIGURAÇÃO DO REGISTRY (Fora do global)
     registry:
       enabled: true
+      annotations:
+        registry.gitlab.com/storage-bucket: "gitlab-registry"
       hpa:
         minReplicas: 1
         maxReplicas: 1

@@ -38,7 +38,7 @@ variable "redis_password" {
   sensitive   = true
   # ATENÇÃO: Se o seu Redis Alpine exige uma senha diferente,
   # mude aqui ou passe via terraform.tfvars.
-  default     = "gitlab-redis-password"
+  default = "gitlab-redis-password"
 }
 
 variable "postgres_password" {
@@ -46,7 +46,7 @@ variable "postgres_password" {
   type        = string
   sensitive   = true
   # ATENÇÃO: Coloque aqui a senha real que o seu PostgreSQL espera na porta 5433
-  default     = "postgres"
+  default = "postgres"
 }
 
 variable "gitlab_runner_token" {

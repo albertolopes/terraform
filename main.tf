@@ -33,8 +33,8 @@ module "postgres" {
 module "redis" {
   source         = "./modules/redis"
   redis_password = var.redis_password
-  providers = { kubernetes = kubernetes }
-  depends_on = [module.k3d_cluster]
+  providers      = { kubernetes = kubernetes }
+  depends_on     = [module.k3d_cluster]
 }
 
 module "minio" {
@@ -42,8 +42,8 @@ module "minio" {
   domain_name      = var.domain_name
   minio_access_key = var.minio_access_key
   minio_secret_key = var.minio_secret_key
-  providers = { kubernetes = kubernetes }
-  depends_on = [module.k3d_cluster]
+  providers        = { kubernetes = kubernetes }
+  depends_on       = [module.k3d_cluster]
 }
 
 # --- Ingress Controller (Traefik) ---
@@ -152,16 +152,16 @@ module "cloudflare" {
   tunnel_name           = "k3d-tunnel"
 
   services = [
-    { hostname = "traefik",       service = "http://traefik.traefik.svc.cluster.local:80" },
-    { hostname = "gitlab",        service = "http://traefik.traefik.svc.cluster.local:80" },
-    { hostname = "registry",      service = "http://traefik.traefik.svc.cluster.local:80" },
-    { hostname = "minio",         service = "http://traefik.traefik.svc.cluster.local:80" },
+    { hostname = "traefik", service = "http://traefik.traefik.svc.cluster.local:80" },
+    { hostname = "gitlab", service = "http://traefik.traefik.svc.cluster.local:80" },
+    { hostname = "registry", service = "http://traefik.traefik.svc.cluster.local:80" },
+    { hostname = "minio", service = "http://traefik.traefik.svc.cluster.local:80" },
     { hostname = "minio-console", service = "http://traefik.traefik.svc.cluster.local:80" },
-    { hostname = "authentik",     service = "http://traefik.traefik.svc.cluster.local:80" },
+    { hostname = "authentik", service = "http://traefik.traefik.svc.cluster.local:80" },
 
-    { hostname = "",              service = "http://traefik.traefik.svc.cluster.local:80" },
+    { hostname = "", service = "http://traefik.traefik.svc.cluster.local:80" },
 
-    { hostname = "*",             service = "http://traefik.traefik.svc.cluster.local:80" }
+    { hostname = "*", service = "http://traefik.traefik.svc.cluster.local:80" }
   ]
 
   providers = {

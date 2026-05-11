@@ -20,7 +20,7 @@ resource "kubernetes_secret_v1" "minio_credentials" {
 
   data = {
     rootUser     = var.minio_access_key
-    rootPassword = var.minio_access_key
+    rootPassword = var.minio_secret_key
   }
 }
 
@@ -47,6 +47,9 @@ resource "kubernetes_deployment_v1" "minio" {
 
     template {
       metadata {
+        annotations = {
+          "checksum/credentials" = sha256(jsonencode(kubernetes_secret_v1.minio_credentials.data))
+        }
         labels = {
           app = "minio"
         }
