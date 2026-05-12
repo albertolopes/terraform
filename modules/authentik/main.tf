@@ -1,6 +1,23 @@
+terraform {
+  required_providers {
+    kubernetes = {
+      source = "hashicorp/kubernetes"
+    }
+    null = {
+      source = "hashicorp/null"
+    }
+  }
+}
+
 # --- Variáveis do Módulo ---
 variable "pg_pass" {
-  description = "Password for the Authentik PostgreSQL database"
+  description = "Password for the shared PostgreSQL database"
+  type        = string
+  sensitive   = true
+}
+
+variable "redis_password" {
+  description = "Password for the shared Redis instance"
   type        = string
   sensitive   = true
 }
@@ -27,6 +44,7 @@ resource "kubernetes_secret_v1" "authentik_env" {
   data = {
     "AUTHENTIK_SECRET_KEY"           = var.secret_key
     "AUTHENTIK_POSTGRESQL__PASSWORD" = var.pg_pass
+    "AUTHENTIK_REDIS__PASSWORD"      = var.redis_password
   }
 }
 
@@ -36,174 +54,33 @@ resource "kubernetes_config_map_v1" "authentik_env" {
     namespace = kubernetes_namespace_v1.authentik.metadata[0].name
   }
   data = {
-    "AUTHENTIK_REDIS__HOST"        = "authentik-redis"
-    "AUTHENTIK_POSTGRESQL__HOST"   = "authentik-postgresql"
-    "AUTHENTIK_POSTGRESQL__USER"   = "authentik"
-    "AUTHENTIK_POSTGRESQL__NAME"   = "authentik"
+    "AUTHENTIK_REDIS__HOST"              = "redis.redis.svc.cluster.local"
+    "AUTHENTIK_REDIS__PORT"              = "6379"
+    "AUTHENTIK_POSTGRESQL__HOST"         = "postgres.postgres.svc.cluster.local"
+    "AUTHENTIK_POSTGRESQL__PORT"         = "5433"
+    "AUTHENTIK_POSTGRESQL__USER"         = "postgres"
+    "AUTHENTIK_POSTGRESQL__NAME"         = "authentik"
     "AUTHENTIK_ERROR_REPORTING__ENABLED" = "false"
-    # Configuração de Proxy Reverso conforme diagnóstico
   }
 }
 
-# --- PostgreSQL ---
-resource "kubernetes_deployment_v1" "postgresql" {
-  metadata {
-    name      = "authentik-postgresql"
-    namespace = kubernetes_namespace_v1.authentik.metadata[0].name
-  }
-  spec {
-    replicas = 1
-    selector {
-      match_labels = { app = "authentik-postgresql" }
-    }
-    template {
-      metadata { labels = { app = "authentik-postgresql" } }
-      spec {
-        container {
-          name  = "postgres"
-          image = "docker.io/library/postgres:16-alpine"
-          env {
-            name  = "POSTGRES_PASSWORD"
-            value = var.pg_pass
-          }
-          env {
-            name  = "POSTGRES_USER"
-            value = "authentik"
-          }
-          env {
-            name  = "POSTGRES_DB"
-            value = "authentik"
-          }
-          port { container_port = 5432 }
+# --- Shared PostgreSQL bootstrap ---
+resource "null_resource" "create_authentik_database" {
+  provisioner "local-exec" {
+    command = <<-EOT
+      kubectl wait --for=condition=ready pod -l app=postgres -n postgres --timeout=180s
+      if ! kubectl exec -n postgres deployment/postgres -- psql -h localhost -p 5433 -U postgres -lqt | cut -d \| -f 1 | grep -qw "authentik"; then
+        kubectl exec -n postgres deployment/postgres -- psql -h localhost -p 5433 -U postgres -c 'CREATE DATABASE authentik OWNER postgres;'
+      fi
+      kubectl exec -n postgres deployment/postgres -- psql -h localhost -p 5433 -U postgres -d authentik -c 'GRANT ALL PRIVILEGES ON DATABASE authentik TO postgres;'
+      kubectl exec -n postgres deployment/postgres -- psql -h localhost -p 5433 -U postgres -d authentik -c 'GRANT ALL ON SCHEMA public TO postgres;'
+      kubectl exec -n postgres deployment/postgres -- psql -h localhost -p 5433 -U postgres -d authentik -c 'ALTER SCHEMA public OWNER TO postgres;'
+    EOT
 
-          volume_mount {
-            name       = "pg-data"
-            mount_path = "/var/lib/postgresql/data"
-          }
-
-          liveness_probe {
-            exec {
-              command = ["pg_isready", "-d", "authentik", "-U", "authentik"]
-            }
-            initial_delay_seconds = 20
-            period_seconds        = 30
-            failure_threshold     = 5
-          }
-        }
-        volume {
-          name = "pg-data"
-          persistent_volume_claim {
-            claim_name = kubernetes_persistent_volume_claim_v1.authentik_pg.metadata[0].name
-          }
-        }
-      }
+    environment = {
+      KUBECONFIG = "${path.cwd}/.k3d_kubeconfig"
     }
   }
-}
-
-resource "kubernetes_service_v1" "postgresql" {
-  metadata {
-    name      = "authentik-postgresql"
-    namespace = kubernetes_namespace_v1.authentik.metadata[0].name
-  }
-  spec {
-    selector = { app = "authentik-postgresql" }
-    port {
-      name = "postgres"
-      port = 5432
-    }
-  }
-}
-
-resource "kubernetes_persistent_volume_claim_v1" "authentik_pg" {
-  metadata {
-    name      = "authentik-pg-pvc"
-    namespace = kubernetes_namespace_v1.authentik.metadata[0].name
-  }
-  spec {
-    access_modes = ["ReadWriteOnce"]
-    resources {
-      requests = {
-        storage = "5Gi"
-      }
-    }
-  }
-  wait_until_bound = false
-}
-
-# --- Redis ---
-resource "kubernetes_deployment_v1" "redis" {
-  metadata {
-    name      = "authentik-redis"
-    namespace = kubernetes_namespace_v1.authentik.metadata[0].name
-  }
-  spec {
-    replicas = 1
-    selector {
-      match_labels = { app = "authentik-redis" }
-    }
-    template {
-      metadata { labels = { app = "authentik-redis" } }
-      spec {
-        container {
-          name    = "redis"
-          image   = "docker.io/library/redis:alpine"
-          command = ["redis-server", "--save", "60", "1", "--loglevel", "warning"]
-          port { container_port = 6379 }
-
-          volume_mount {
-            name       = "redis-data"
-            mount_path = "/data"
-          }
-
-          liveness_probe {
-            exec {
-              command = ["sh", "-c", "redis-cli ping | grep PONG"]
-            }
-            initial_delay_seconds = 20
-            period_seconds        = 30
-            failure_threshold     = 5
-          }
-        }
-        volume {
-          name = "redis-data"
-          persistent_volume_claim {
-            claim_name = kubernetes_persistent_volume_claim_v1.authentik_redis.metadata[0].name
-          }
-        }
-      }
-    }
-  }
-}
-
-resource "kubernetes_service_v1" "redis" {
-  metadata {
-    name      = "authentik-redis"
-    namespace = kubernetes_namespace_v1.authentik.metadata[0].name
-  }
-  spec {
-    selector = { app = "authentik-redis" }
-    port {
-      name = "redis"
-      port = 6379
-    }
-  }
-}
-
-resource "kubernetes_persistent_volume_claim_v1" "authentik_redis" {
-  metadata {
-    name      = "authentik-redis-pvc"
-    namespace = kubernetes_namespace_v1.authentik.metadata[0].name
-  }
-  spec {
-    access_modes = ["ReadWriteOnce"]
-    resources {
-      requests = {
-        storage = "2Gi"
-      }
-    }
-  }
-  wait_until_bound = false
 }
 
 # --- Authentik Server ---
@@ -239,8 +116,7 @@ resource "kubernetes_deployment_v1" "authentik_server" {
     }
   }
   depends_on = [
-    kubernetes_deployment_v1.postgresql,
-    kubernetes_deployment_v1.redis
+    null_resource.create_authentik_database
   ]
 }
 
@@ -292,7 +168,6 @@ resource "kubernetes_deployment_v1" "authentik_worker" {
     }
   }
   depends_on = [
-    kubernetes_deployment_v1.postgresql,
-    kubernetes_deployment_v1.redis
+    null_resource.create_authentik_database
   ]
 }

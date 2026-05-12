@@ -59,6 +59,28 @@ module "traefik" {
   depends_on = [module.k3d_cluster, module.networking]
 }
 
+resource "random_password" "authentik_secret_key" {
+  length  = 64
+  special = false
+}
+
+module "authentik" {
+  source         = "./modules/authentik"
+  pg_pass        = var.postgres_password
+  redis_password = var.redis_password
+  secret_key     = random_password.authentik_secret_key.result
+
+  providers = {
+    kubernetes = kubernetes
+  }
+
+  depends_on = [
+    module.postgres,
+    module.redis,
+    module.traefik
+  ]
+}
+
 # --- ESTRUTURA PARA O GITLAB ---
 
 resource "kubernetes_namespace_v1" "gitlab" {
