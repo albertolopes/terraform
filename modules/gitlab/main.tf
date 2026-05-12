@@ -38,6 +38,10 @@ s3:
   v4auth: true
   secure: false
   pathstyle: true
+redirect:
+  disable: true
+cache:
+  blobdescriptor: inmemory
 EOT
   }
 }
