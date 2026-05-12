@@ -56,3 +56,8 @@ variable "trusted_proxies" {
   type        = list(string)
   default     = ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "127.0.0.1"]
 }
+
+variable "traefik_service_cluster_ip" {
+  description = "ClusterIP do Service Traefik usado pelo runner para acessar o registry sem passar pela Cloudflare"
+  type        = string
+}

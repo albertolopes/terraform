@@ -430,6 +430,9 @@ resource "helm_release" "gitlab_runner" {
             helper_memory_request = "128Mi"
             service_cpu_request = "400m"
             service_memory_request = "1Gi"
+          [[runners.kubernetes.host_aliases]]
+            ip = "${var.traefik_service_cluster_ip}"
+            hostnames = ["registry.${var.domain_name}"]
 
       privileged: true
       executor: kubernetes

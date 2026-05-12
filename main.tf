@@ -126,6 +126,7 @@ module "gitlab" {
   minio_secret_key            = var.minio_secret_key
   redis_password              = var.redis_password
   runner_authentication_token = var.gitlab_runner_token
+  traefik_service_cluster_ip  = module.traefik.service_cluster_ip
 
   providers = {
     helm       = helm
