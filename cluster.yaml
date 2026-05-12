@@ -31,7 +31,6 @@ registries:
       "registry.avocadotech.site":
         endpoint:
           - "http://gitlab-registry.gitlab.svc.cluster.local:5000"
-
 kubeAPI:
   host: "127.0.0.1"
   hostIP: "127.0.0.1"
