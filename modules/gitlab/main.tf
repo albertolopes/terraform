@@ -269,7 +269,7 @@ resource "helm_release" "gitlab" {
       storage:
         secret: "registry-storage-secret"
         key: "config"
-      authEndpoint: "http://gitlab-webservice-default.${var.namespace}.svc.cluster.local:8181"
+      authEndpoint: "https://gitlab.${var.domain_name}"
       tokenIssuer: "gitlab-issuer"
 
     YAML
