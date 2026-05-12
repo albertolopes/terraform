@@ -116,6 +116,13 @@ resource "kubernetes_deployment_v1" "minio" {
             name       = "data"
             mount_path = "/data"
           }
+
+          resources {
+            limits = {
+              cpu    = "1000m"
+              memory = "1Gi"
+            }
+          }
         }
 
         # Adicionar um PersistentVolumeClaim para armazenamento persistente

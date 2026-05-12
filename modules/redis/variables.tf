@@ -35,8 +35,8 @@ variable "resources" {
       memory = "256Mi"
     }
     limits = {
-      cpu    = "500m"
-      memory = "512Mi"
+      cpu    = "1000m"
+      memory = "1Gi"
     }
   }
 }
