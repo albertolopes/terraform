@@ -30,7 +30,7 @@ registries:
     mirrors:
       "registry.avocadotech.site":
         endpoint:
-          - "http://gitlab-webservice-default.gitlab.svc.cluster.local:8181"
+          - "http://gitlab-registry.gitlab.svc.cluster.local:5000"
 
 kubeAPI:
   host: "127.0.0.1"
