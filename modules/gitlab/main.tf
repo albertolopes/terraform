@@ -280,7 +280,19 @@ resource "kubernetes_role_v1" "gitlab_runner_role" {
 
   rule {
     api_groups = [""]
-    resources  = ["pods", "pods/exec", "pods/attach", "pods/status", "secrets", "configmaps"]
+    resources  = ["pods", "pods/exec", "pods/attach", "pods/status", "secrets", "configmaps", "services"]
+    verbs      = ["get", "list", "watch", "create", "delete", "update", "patch"]
+  }
+
+  rule {
+    api_groups = ["apps"]
+    resources  = ["deployments"]
+    verbs      = ["get", "list", "watch", "create", "delete", "update", "patch"]
+  }
+
+  rule {
+    api_groups = ["networking.k8s.io"]
+    resources  = ["ingresses"]
     verbs      = ["get", "list", "watch", "create", "delete", "update", "patch"]
   }
 
@@ -362,7 +374,10 @@ resource "helm_release" "gitlab_runner" {
 
       privileged: true
       executor: kubernetes
+      tags: "desenv,homolog,production"
       runUntagged: true
+      protected: false
+      locked: false
     YAML
   ]
 }
