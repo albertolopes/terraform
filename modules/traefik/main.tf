@@ -108,8 +108,18 @@ resource "kubernetes_config_map_v1" "traefik" {
       entryPoints:
         web:
           address: ":80"
+          transport:
+            respondingTimeouts:
+              readTimeout: "0s"
+              writeTimeout: "0s"
+              idleTimeout: "1800s"
         websecure:
           address: ":443"
+          transport:
+            respondingTimeouts:
+              readTimeout: "0s"
+              writeTimeout: "0s"
+              idleTimeout: "1800s"
         traefik:
           address: ":8080"
 

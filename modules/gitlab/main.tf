@@ -136,6 +136,7 @@ resource "helm_release" "gitlab" {
       edition: ce
       ingress:
         enabled: true
+        provider: traefik
         class: traefik
         configureCertmanager: false
         tls:
@@ -237,17 +238,22 @@ resource "helm_release" "gitlab" {
       enabled: true
       annotations:
         registry.gitlab.com/storage-bucket: "gitlab-registry"
+      ingress:
+        proxyReadTimeout: 1800
+        proxyBodySize: "0"
+        proxyBuffering: "off"
+        annotations:
+          traefik.ingress.kubernetes.io/router.middlewares: "${var.namespace}-traefik-force-https-header@kubernetescrd"
       hpa:
         minReplicas: 1
         maxReplicas: 1
-      # Aumentado para evitar CrashLoopBackOff por falta de RAM
       resources:
         requests:
-          cpu: 100m
-          memory: 256Mi
-        limits:
-          cpu: 300m
+          cpu: 200m
           memory: 512Mi
+        limits:
+          cpu: 1000m
+          memory: 1Gi
       storage:
         secret: "registry-storage-secret"
         key: "config"
@@ -328,12 +334,65 @@ resource "kubernetes_role_binding_v1" "gitlab_runner_role_binding" {
   }
 }
 
+# --- NAMESPACE DA APLICAÇÃO CRIPTO PRICE ---
+
+resource "kubernetes_namespace_v1" "cripto_price" {
+  metadata {
+    name = "cripto-price"
+  }
+}
+
+resource "kubernetes_role_v1" "cripto_price_deployer_role" {
+  metadata {
+    name      = "cripto-price-deployer-role"
+    namespace = kubernetes_namespace_v1.cripto_price.metadata[0].name
+  }
+
+  rule {
+    api_groups = [""]
+    resources  = ["services", "configmaps", "secrets"]
+    verbs      = ["get", "list", "watch", "create", "delete", "update", "patch"]
+  }
+
+  rule {
+    api_groups = ["apps"]
+    resources  = ["deployments"]
+    verbs      = ["get", "list", "watch", "create", "delete", "update", "patch"]
+  }
+
+  rule {
+    api_groups = ["networking.k8s.io"]
+    resources  = ["ingresses"]
+    verbs      = ["get", "list", "watch", "create", "delete", "update", "patch"]
+  }
+}
+
+resource "kubernetes_role_binding_v1" "cripto_price_deployer_role_binding" {
+  metadata {
+    name      = "cripto-price-deployer-role-binding"
+    namespace = kubernetes_namespace_v1.cripto_price.metadata[0].name
+  }
+
+  role_ref {
+    api_group = "rbac.authorization.k8s.io"
+    kind      = "Role"
+    name      = kubernetes_role_v1.cripto_price_deployer_role.metadata[0].name
+  }
+
+  subject {
+    kind      = "ServiceAccount"
+    name      = "default"
+    namespace = var.namespace
+  }
+}
+
 # --- HELM RELEASE GITLAB RUNNER ---
 
 resource "helm_release" "gitlab_runner" {
   depends_on = [
     null_resource.wait_for_gitlab_webservice,
-    kubernetes_role_binding_v1.gitlab_runner_role_binding
+    kubernetes_role_binding_v1.gitlab_runner_role_binding,
+    kubernetes_role_binding_v1.cripto_price_deployer_role_binding
   ]
 
   name       = "gitlab-runner"
