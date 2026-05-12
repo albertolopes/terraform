@@ -9,7 +9,7 @@ variable "domain_name" {
 variable "admin_email" {
   description = "Email do administrador"
   type        = string
-  default     = "admin@example.com"
+  default     = "albertolopes@mail.com"
 }
 
 variable "gitlab_root_password" {

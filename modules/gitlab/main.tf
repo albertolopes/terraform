@@ -7,6 +7,8 @@ resource "kubernetes_secret_v1" "gitlab_minio_secret" {
   }
   type = "Opaque"
   data = {
+    "accesskey"  = var.minio_access_key
+    "secretkey"  = var.minio_secret_key
     "connection" = <<-EOT
 provider: AWS
 region: us-east-1
