@@ -278,15 +278,6 @@ resource "helm_release" "gitlab" {
 
 # --- AUTOMAÇÃO PÓS-INSTALL ---
 
-data "kubernetes_service_v1" "gitlab_registry" {
-  depends_on = [helm_release.gitlab]
-
-  metadata {
-    name      = "gitlab-registry"
-    namespace = var.namespace
-  }
-}
-
 resource "null_resource" "wait_for_gitlab_webservice" {
   depends_on = [helm_release.gitlab]
   provisioner "local-exec" {
@@ -452,7 +443,7 @@ resource "helm_release" "gitlab_runner" {
             service_cpu_request = "400m"
             service_memory_request = "1Gi"
           [[runners.kubernetes.host_aliases]]
-            ip = "${data.kubernetes_service_v1.gitlab_registry.spec[0].cluster_ip}"
+            ip = "127.0.0.1"
             hostnames = ["registry.${var.domain_name}"]
 
       privileged: true
