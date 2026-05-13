@@ -66,6 +66,7 @@ resource "random_password" "authentik_secret_key" {
 
 module "authentik" {
   source         = "./modules/authentik"
+  domain_name    = var.domain_name
   pg_pass        = var.postgres_password
   redis_password = var.redis_password
   secret_key     = random_password.authentik_secret_key.result

@@ -28,6 +28,11 @@ variable "secret_key" {
   sensitive   = true
 }
 
+variable "domain_name" {
+  description = "Base domain name for Authentik ingress"
+  type        = string
+}
+
 # --- Namespace ---
 resource "kubernetes_namespace_v1" "authentik" {
   metadata {
@@ -136,6 +141,47 @@ resource "kubernetes_service_v1" "authentik_server" {
       port = 9443
     }
   }
+}
+
+# --- Authentik Ingress ---
+resource "kubernetes_ingress_v1" "authentik" {
+  metadata {
+    name      = "authentik"
+    namespace = kubernetes_namespace_v1.authentik.metadata[0].name
+    annotations = {
+      "kubernetes.io/ingress.class"                       = "traefik"
+      "traefik.ingress.kubernetes.io/router.entrypoints"  = "web,websecure"
+      "traefik.ingress.kubernetes.io/router.middlewares"  = "traefik-force-https-header@kubernetescrd"
+      "traefik.ingress.kubernetes.io/service.server.port" = "9000"
+    }
+  }
+
+  spec {
+    ingress_class_name = "traefik"
+
+    rule {
+      host = "authentik.${var.domain_name}"
+
+      http {
+        path {
+          path      = "/"
+          path_type = "Prefix"
+
+          backend {
+            service {
+              name = kubernetes_service_v1.authentik_server.metadata[0].name
+
+              port {
+                number = 9000
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
+  depends_on = [kubernetes_service_v1.authentik_server]
 }
 
 # --- Authentik Worker ---
