@@ -407,11 +407,9 @@ resource "helm_release" "gitlab_runner" {
     kubernetes_role_binding_v1.cripto_price_deployer_role_binding
   ]
 
-  name       = "gitlab-runner"
-  repository = "https://charts.gitlab.io/"
-  chart      = "gitlab-runner"
-  namespace  = var.namespace
-  version    = "0.70.0"
+  name      = "gitlab-runner"
+  chart     = "${path.module}/gitlab/charts/gitlab-runner"
+  namespace = var.namespace
 
   values = [
     <<-YAML
