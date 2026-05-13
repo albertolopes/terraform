@@ -153,9 +153,9 @@ resource "kubernetes_deployment_v1" "authentik_worker" {
       metadata { labels = { app = "authentik-worker" } }
       spec {
         container {
-          name    = "worker"
-          image   = "ghcr.io/goauthentik/server:latest"
-          command = ["worker"]
+          name  = "worker"
+          image = "ghcr.io/goauthentik/server:latest"
+          args  = ["worker"]
 
           env_from {
             config_map_ref { name = kubernetes_config_map_v1.authentik_env.metadata[0].name }
