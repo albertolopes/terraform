@@ -241,7 +241,7 @@ resource "kubernetes_job_v1" "create_buckets" {
             
             mc alias set myminio http://minio:9000 ${var.minio_access_key} ${var.minio_secret_key}
             
-            for bucket in terraform-state gitlab-lfs gitlab-artifacts gitlab-uploads gitlab-packages gitlab-registry; do
+            for bucket in terraform-state gitlab-lfs gitlab-artifacts gitlab-uploads gitlab-packages gitlab-registry runner-cache; do
               mc mb myminio/$bucket --ignore-existing
             done
             

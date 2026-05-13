@@ -442,6 +442,19 @@ resource "helm_release" "gitlab_runner" {
             helper_memory_request = "128Mi"
             service_cpu_request = "400m"
             service_memory_request = "1Gi"
+          [runners.cache]
+            Type = "s3"
+            Path = "gitlab-runner"
+            Shared = true
+          [runners.cache.s3]
+            ServerAddress = "minio.minio.svc.cluster.local:9000"
+            AccessKey = "${var.minio_access_key}"
+            SecretKey = "${var.minio_secret_key}"
+            BucketName = "runner-cache"
+            BucketLocation = "us-east-1"
+            Insecure = true
+            AuthenticationType = "access-key"
+            PathStyle = true
           [[runners.kubernetes.host_aliases]]
             ip = "127.0.0.1"
             hostnames = ["registry.${var.domain_name}"]
