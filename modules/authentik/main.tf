@@ -98,9 +98,9 @@ resource "kubernetes_deployment_v1" "authentik_server" {
       metadata { labels = { app = "authentik-server" } }
       spec {
         container {
-          name    = "server"
-          image   = "ghcr.io/goauthentik/server:latest"
-          command = ["server"]
+          name  = "server"
+          image = "ghcr.io/goauthentik/server:latest"
+          args  = ["server"]
 
           env_from {
             config_map_ref { name = kubernetes_config_map_v1.authentik_env.metadata[0].name }
