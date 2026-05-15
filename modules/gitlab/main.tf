@@ -346,6 +346,54 @@ resource "kubernetes_role_binding_v1" "gitlab_runner_role_binding" {
   }
 }
 
+resource "kubernetes_cluster_role_v1" "gitlab_runner_dynamic_deployer_role" {
+  metadata {
+    name = "gitlab-runner-dynamic-deployer-role"
+  }
+
+  rule {
+    api_groups = [""]
+    resources  = ["namespaces"]
+    verbs      = ["get", "list", "watch", "create", "update", "patch"]
+  }
+
+  rule {
+    api_groups = [""]
+    resources  = ["services", "configmaps", "secrets"]
+    verbs      = ["get", "list", "watch", "create", "delete", "update", "patch"]
+  }
+
+  rule {
+    api_groups = ["apps"]
+    resources  = ["deployments"]
+    verbs      = ["get", "list", "watch", "create", "delete", "update", "patch"]
+  }
+
+  rule {
+    api_groups = ["networking.k8s.io"]
+    resources  = ["ingresses"]
+    verbs      = ["get", "list", "watch", "create", "delete", "update", "patch"]
+  }
+}
+
+resource "kubernetes_cluster_role_binding_v1" "gitlab_runner_dynamic_deployer_role_binding" {
+  metadata {
+    name = "gitlab-runner-dynamic-deployer-role-binding"
+  }
+
+  role_ref {
+    api_group = "rbac.authorization.k8s.io"
+    kind      = "ClusterRole"
+    name      = kubernetes_cluster_role_v1.gitlab_runner_dynamic_deployer_role.metadata[0].name
+  }
+
+  subject {
+    kind      = "ServiceAccount"
+    name      = "default"
+    namespace = var.namespace
+  }
+}
+
 # --- NAMESPACE DA APLICAÇÃO CRIPTO PRICE ---
 
 resource "kubernetes_namespace_v1" "cripto_price" {
@@ -404,6 +452,7 @@ resource "helm_release" "gitlab_runner" {
   depends_on = [
     null_resource.wait_for_gitlab_webservice,
     kubernetes_role_binding_v1.gitlab_runner_role_binding,
+    kubernetes_cluster_role_binding_v1.gitlab_runner_dynamic_deployer_role_binding,
     kubernetes_role_binding_v1.cripto_price_deployer_role_binding
   ]
 
