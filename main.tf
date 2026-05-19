@@ -220,6 +220,7 @@ module "cloudflare" {
     { hostname = "minio", service = "http://traefik.traefik.svc.cluster.local:80" },
     { hostname = "minio-console", service = "http://traefik.traefik.svc.cluster.local:80" },
     { hostname = "authentik", service = "http://traefik.traefik.svc.cluster.local:80" },
+    { hostname = "db", service = "tcp://${module.postgres.meu_album_postgres_service_name}.${module.postgres.meu_album_postgres_namespace}.svc.cluster.local:5432" },
 
     { hostname = "", service = "http://traefik.traefik.svc.cluster.local:80" },
 
