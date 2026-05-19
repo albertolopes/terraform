@@ -4,11 +4,28 @@ terraform {
     kubernetes = {
       source = "hashicorp/kubernetes"
     }
+    random = {
+      source = "hashicorp/random"
+    }
   }
 }
 
 resource "random_pet" "pvc_suffix" {
   length = 2
+}
+
+resource "random_pet" "exposed_pvc_suffix" {
+  length = 2
+}
+
+resource "random_password" "meu_album_password" {
+  length           = 32
+  special          = true
+  min_lower        = 8
+  min_upper        = 8
+  min_numeric      = 8
+  min_special      = 4
+  override_special = "!#$%&*()-_=+[]{}"
 }
 
 resource "kubernetes_namespace_v1" "postgres" {
@@ -264,4 +281,182 @@ resource "kubernetes_service_v1" "postgres" {
   }
 
   depends_on = [null_resource.postgres_permissions]
+}
+
+resource "kubernetes_secret_v1" "meu_album_postgres_secret" {
+  metadata {
+    name      = "meu-album-postgres-secret"
+    namespace = kubernetes_namespace_v1.postgres.metadata[0].name
+  }
+
+  data = {
+    POSTGRES_USER     = "meu_album"
+    POSTGRES_PASSWORD = random_password.meu_album_password.result
+    POSTGRES_DB       = "meu-album"
+  }
+
+  type = "Opaque"
+}
+
+resource "kubernetes_persistent_volume_claim_v1" "meu_album_postgres" {
+  metadata {
+    name      = "meu-album-postgres-pvc-${random_pet.exposed_pvc_suffix.id}"
+    namespace = kubernetes_namespace_v1.postgres.metadata[0].name
+  }
+
+  spec {
+    access_modes = ["ReadWriteOnce"]
+
+    resources {
+      requests = {
+        storage = "10Gi"
+      }
+    }
+
+    storage_class_name = "local-path"
+  }
+
+  wait_until_bound = false
+}
+
+resource "kubernetes_deployment_v1" "meu_album_postgres" {
+  metadata {
+    name      = "meu-album-postgres"
+    namespace = kubernetes_namespace_v1.postgres.metadata[0].name
+    labels = {
+      app = "meu-album-postgres"
+    }
+  }
+
+  spec {
+    replicas = 1
+
+    selector {
+      match_labels = {
+        app = "meu-album-postgres"
+      }
+    }
+
+    template {
+      metadata {
+        labels = {
+          app = "meu-album-postgres"
+        }
+      }
+
+      spec {
+        container {
+          name  = "postgres"
+          image = "postgres:16-alpine"
+
+          env {
+            name  = "POSTGRES_HOST_AUTH_METHOD"
+            value = "scram-sha-256"
+          }
+
+          env {
+            name = "POSTGRES_USER"
+            value_from {
+              secret_key_ref {
+                name = kubernetes_secret_v1.meu_album_postgres_secret.metadata[0].name
+                key  = "POSTGRES_USER"
+              }
+            }
+          }
+
+          env {
+            name = "POSTGRES_PASSWORD"
+            value_from {
+              secret_key_ref {
+                name = kubernetes_secret_v1.meu_album_postgres_secret.metadata[0].name
+                key  = "POSTGRES_PASSWORD"
+              }
+            }
+          }
+
+          env {
+            name = "POSTGRES_DB"
+            value_from {
+              secret_key_ref {
+                name = kubernetes_secret_v1.meu_album_postgres_secret.metadata[0].name
+                key  = "POSTGRES_DB"
+              }
+            }
+          }
+
+          port {
+            container_port = 5432
+            name           = "postgres"
+          }
+
+          volume_mount {
+            name       = "postgres-data"
+            mount_path = "/var/lib/postgresql/data"
+          }
+
+          resources {
+            requests = {
+              cpu    = "250m"
+              memory = "512Mi"
+            }
+            limits = {
+              cpu    = "1000m"
+              memory = "1Gi"
+            }
+          }
+
+          liveness_probe {
+            exec {
+              command = ["pg_isready", "-U", "meu_album", "-d", "meu-album"]
+            }
+            initial_delay_seconds = 30
+            period_seconds        = 10
+          }
+
+          readiness_probe {
+            exec {
+              command = ["pg_isready", "-U", "meu_album", "-d", "meu-album"]
+            }
+            initial_delay_seconds = 10
+            period_seconds        = 5
+          }
+        }
+
+        volume {
+          name = "postgres-data"
+          persistent_volume_claim {
+            claim_name = kubernetes_persistent_volume_claim_v1.meu_album_postgres.metadata[0].name
+          }
+        }
+      }
+    }
+  }
+
+  depends_on = [
+    kubernetes_namespace_v1.postgres,
+    kubernetes_secret_v1.meu_album_postgres_secret
+  ]
+}
+
+resource "kubernetes_service_v1" "meu_album_postgres" {
+  metadata {
+    name      = "meu-album-postgres"
+    namespace = kubernetes_namespace_v1.postgres.metadata[0].name
+  }
+
+  spec {
+    type = "ClusterIP"
+
+    selector = {
+      app = "meu-album-postgres"
+    }
+
+    port {
+      port        = 5432
+      target_port = 5432
+      name        = "postgres"
+    }
+  }
+
+  depends_on = [kubernetes_deployment_v1.meu_album_postgres]
 }

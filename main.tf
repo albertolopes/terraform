@@ -26,6 +26,7 @@ module "postgres" {
   source = "./modules/postgres"
   providers = {
     kubernetes = kubernetes
+    random     = random
   }
   depends_on = [module.k3d_cluster]
 }
@@ -55,6 +56,7 @@ module "traefik" {
   providers = {
     helm       = helm
     kubernetes = kubernetes
+    kubectl    = kubectl
   }
   depends_on = [module.k3d_cluster, module.networking]
 }
@@ -107,6 +109,42 @@ resource "null_resource" "wait_for_traefik_middleware_crd" {
 resource "time_sleep" "wait_for_crd_propagation" {
   depends_on      = [null_resource.wait_for_traefik_middleware_crd]
   create_duration = "30s"
+}
+
+resource "null_resource" "wait_for_traefik_ingressroutetcp_crd" {
+  depends_on = [module.traefik]
+
+  provisioner "local-exec" {
+    command = "kubectl wait --for=condition=established --timeout=120s crd/ingressroutetcps.traefik.io"
+    environment = {
+      KUBECONFIG = "${path.cwd}/.k3d_kubeconfig"
+    }
+  }
+}
+
+resource "kubectl_manifest" "meu_album_postgres_tcp_route" {
+  depends_on = [
+    module.postgres,
+    module.traefik,
+    null_resource.wait_for_traefik_ingressroutetcp_crd
+  ]
+
+  yaml_body = <<-YAML
+    apiVersion: traefik.io/v1alpha1
+    kind: IngressRouteTCP
+    metadata:
+      name: meu-album-postgres
+      namespace: ${module.traefik.namespace}
+    spec:
+      entryPoints:
+        - postgres
+      routes:
+        - match: HostSNI(`*`)
+          services:
+            - name: ${module.postgres.meu_album_postgres_service_name}
+              namespace: ${module.postgres.meu_album_postgres_namespace}
+              port: 5432
+  YAML
 }
 
 resource "kubernetes_manifest" "traefik_middleware" {

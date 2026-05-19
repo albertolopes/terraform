@@ -120,6 +120,8 @@ resource "kubernetes_config_map_v1" "traefik" {
               readTimeout: "0s"
               writeTimeout: "0s"
               idleTimeout: "1800s"
+        postgres:
+          address: ":5432"
         traefik:
           address: ":8080"
 
@@ -206,6 +208,11 @@ resource "kubernetes_deployment_v1" "traefik" {
           port {
             name           = "websecure"
             container_port = 443
+          }
+
+          port {
+            name           = "postgres"
+            container_port = 5432
           }
 
           port {
@@ -312,6 +319,12 @@ resource "kubernetes_service_v1" "traefik" {
       name        = "websecure"
       port        = 443
       target_port = 443
+    }
+
+    port {
+      name        = "postgres"
+      port        = 5432
+      target_port = 5432
     }
 
     port {
