@@ -1,0 +1,8 @@
+*
+!docker/
+!docker/tesseract-ocr-service/
+!docker/tesseract-ocr-service/**
+!modules/
+!modules/tesseract/
+!modules/tesseract/tessdata/
+!modules/tesseract/tessdata/por.traineddata

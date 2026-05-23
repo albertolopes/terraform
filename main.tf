@@ -92,7 +92,9 @@ module "tesseract" {
   tesseract_ocr_image = var.tesseract_ocr_image
   api_build_context   = null
   api_dockerfile      = null
-  ocr_build_context   = "${path.module}/docker/tesseract-ocr-service"
+  ocr_build_context   = path.module
+  ocr_dockerfile      = "${path.module}/docker/tesseract-ocr-service/Dockerfile"
+  ocr_tessdata_file   = "${path.module}/modules/tesseract/tessdata/por.traineddata"
   api_replicas        = 0
   enable_ingress      = var.tesseract_enable_ingress && var.domain_name != ""
 

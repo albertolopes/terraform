@@ -12,7 +12,8 @@ import pytesseract
 app = FastAPI(title="Tesseract OCR")
 
 MAX_BODY_BYTES = int(os.getenv("MAX_BODY_BYTES", "12582912"))
-DEFAULT_LANG = os.getenv("TESSERACT_LANG", "por+eng")
+DEFAULT_LANG = os.getenv("TESSERACT_LANG", "por")
+TESSDATA_PREFIX = os.getenv("TESSDATA_PREFIX", "/usr/share/tesseract-ocr/5/tessdata")
 
 
 @app.middleware("http")
@@ -60,13 +61,17 @@ async def ocr(
 
 
 def _extract_text(payload: bytes, content_type: str, lang: str) -> str:
+    config = f"--tessdata-dir {TESSDATA_PREFIX}"
+
     if content_type == "application/pdf" or payload.startswith(b"%PDF"):
         pages = convert_from_bytes(payload)
-        return "\n\n".join(pytesseract.image_to_string(page, lang=lang) for page in pages)
+        return "\n\n".join(
+            pytesseract.image_to_string(page, lang=lang, config=config) for page in pages
+        )
 
     try:
         image = Image.open(io.BytesIO(payload))
     except UnidentifiedImageError as exc:
         raise ValueError("Unsupported file format") from exc
 
-    return pytesseract.image_to_string(image, lang=lang)
+    return pytesseract.image_to_string(image, lang=lang, config=config)

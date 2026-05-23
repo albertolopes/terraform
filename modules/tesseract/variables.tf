@@ -75,6 +75,18 @@ variable "ocr_build_context" {
   default     = null
 }
 
+variable "ocr_dockerfile" {
+  description = "Dockerfile usado para build do OCR. Use null para usar o Dockerfile do contexto."
+  type        = string
+  default     = null
+}
+
+variable "ocr_tessdata_file" {
+  description = "Arquivo traineddata usado pelo OCR. Entra nos triggers para rebuild da imagem."
+  type        = string
+  default     = null
+}
+
 variable "k3d_cluster_name" {
   description = "Nome do cluster k3d usado para importar imagens locais."
   type        = string
