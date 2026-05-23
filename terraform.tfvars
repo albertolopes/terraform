@@ -1,4 +1,4 @@
-domain_name           = "avocadotech.site"
+domain_name           = ""
 cloudflare_api_token  = ""
 cloudflare_account_id = ""
 cloudflare_zone_id    = ""
