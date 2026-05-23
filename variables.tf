@@ -56,6 +56,24 @@ variable "gitlab_runner_token" {
   default     = "glrt-5e3ec77772cda317786173d3d0e157f7686a24be"
 }
 
+variable "tesseract_api_image" {
+  description = "Imagem da API Tesseract ja disponivel no cluster ou registry"
+  type        = string
+  default     = "tesseract-api:latest"
+}
+
+variable "tesseract_ocr_image" {
+  description = "Imagem do servico Tesseract OCR ja disponivel no cluster ou registry"
+  type        = string
+  default     = "tesseract-ocr:latest"
+}
+
+variable "tesseract_hostname" {
+  description = "Subdominio publico da API Tesseract"
+  type        = string
+  default     = "tesseract"
+}
+
 variable "cloudflare_api_token" {
   description = "Cloudflare API Token"
   type        = string

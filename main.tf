@@ -84,6 +84,24 @@ module "authentik" {
   ]
 }
 
+module "tesseract" {
+  source              = "./modules/tesseract"
+  domain_name         = var.domain_name
+  hostname            = var.tesseract_hostname
+  api_image           = var.tesseract_api_image
+  tesseract_ocr_image = var.tesseract_ocr_image
+
+  providers = {
+    kubernetes = kubernetes
+  }
+
+  depends_on = [
+    module.k3d_cluster,
+    module.traefik,
+    module.networking
+  ]
+}
+
 # --- ESTRUTURA PARA O GITLAB ---
 
 resource "kubernetes_namespace_v1" "gitlab" {
@@ -220,6 +238,7 @@ module "cloudflare" {
     { hostname = "minio", service = "http://traefik.traefik.svc.cluster.local:80" },
     { hostname = "minio-console", service = "http://traefik.traefik.svc.cluster.local:80" },
     { hostname = "authentik", service = "http://traefik.traefik.svc.cluster.local:80" },
+    { hostname = var.tesseract_hostname, service = "http://traefik.traefik.svc.cluster.local:80" },
     { hostname = "db", service = "tcp://${module.postgres.meu_album_postgres_service_name}.${module.postgres.meu_album_postgres_namespace}.svc.cluster.local:5432" },
 
     { hostname = "", service = "http://traefik.traefik.svc.cluster.local:80" },
@@ -232,5 +251,5 @@ module "cloudflare" {
     kubernetes = kubernetes
   }
 
-  depends_on = [module.k3d_cluster, module.networking]
+  depends_on = [module.k3d_cluster, module.networking, module.tesseract]
 }

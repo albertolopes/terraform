@@ -33,3 +33,8 @@ output "meu_album_postgres_url" {
   value       = "postgresql://${module.postgres.meu_album_postgres_user}:${urlencode(module.postgres.meu_album_postgres_password)}@${var.domain_name}:5432/${module.postgres.meu_album_postgres_database}"
   sensitive   = true
 }
+
+output "tesseract_api_url" {
+  description = "URL publica da API Tesseract."
+  value       = module.tesseract.api_url
+}
