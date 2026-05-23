@@ -74,6 +74,18 @@ variable "tesseract_hostname" {
   default     = "tesseract"
 }
 
+variable "tesseract_api_build_context" {
+  description = "Diretorio com o Dockerfile da API Tesseract para build/import local no k3d. Use null para nao buildar."
+  type        = string
+  default     = null
+}
+
+variable "tesseract_ocr_build_context" {
+  description = "Diretorio com o Dockerfile do Tesseract OCR para build/import local no k3d. Use null para nao buildar."
+  type        = string
+  default     = null
+}
+
 variable "cloudflare_api_token" {
   description = "Cloudflare API Token"
   type        = string

@@ -24,6 +24,38 @@ resource "kubernetes_namespace_v1" "tesseract" {
   }
 }
 
+resource "null_resource" "build_import_tesseract_ocr_image" {
+  count = var.ocr_build_context == null ? 0 : 1
+
+  triggers = {
+    image         = var.tesseract_ocr_image
+    build_context = var.ocr_build_context
+  }
+
+  provisioner "local-exec" {
+    command = <<-EOT
+      docker build --platform linux/amd64 -t ${var.tesseract_ocr_image} ${var.ocr_build_context}
+      k3d image import --cluster ${var.k3d_cluster_name} ${var.tesseract_ocr_image}
+    EOT
+  }
+}
+
+resource "null_resource" "build_import_api_image" {
+  count = var.api_build_context == null ? 0 : 1
+
+  triggers = {
+    image         = var.api_image
+    build_context = var.api_build_context
+  }
+
+  provisioner "local-exec" {
+    command = <<-EOT
+      docker build --platform linux/amd64 -t ${var.api_image} ${var.api_build_context}
+      k3d image import --cluster ${var.k3d_cluster_name} ${var.api_image}
+    EOT
+  }
+}
+
 resource "kubernetes_deployment_v1" "tesseract_ocr" {
   metadata {
     name      = "tesseract-ocr"
@@ -100,6 +132,10 @@ resource "kubernetes_deployment_v1" "tesseract_ocr" {
       }
     }
   }
+
+  depends_on = [
+    null_resource.build_import_tesseract_ocr_image
+  ]
 }
 
 resource "kubernetes_service_v1" "tesseract_ocr" {
@@ -202,6 +238,7 @@ resource "kubernetes_deployment_v1" "api" {
   }
 
   depends_on = [
+    null_resource.build_import_api_image,
     kubernetes_deployment_v1.tesseract_ocr,
     kubernetes_service_v1.tesseract_ocr
   ]

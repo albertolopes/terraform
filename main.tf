@@ -90,6 +90,8 @@ module "tesseract" {
   hostname            = var.tesseract_hostname
   api_image           = var.tesseract_api_image
   tesseract_ocr_image = var.tesseract_ocr_image
+  api_build_context   = var.tesseract_api_build_context
+  ocr_build_context   = var.tesseract_ocr_build_context
 
   providers = {
     kubernetes = kubernetes

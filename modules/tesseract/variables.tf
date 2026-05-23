@@ -56,3 +56,21 @@ variable "tesseract_replicas" {
   type        = number
   default     = 1
 }
+
+variable "api_build_context" {
+  description = "Diretorio com o Dockerfile da API para build/import local no k3d. Use null para nao buildar."
+  type        = string
+  default     = null
+}
+
+variable "ocr_build_context" {
+  description = "Diretorio com o Dockerfile do OCR para build/import local no k3d. Use null para nao buildar."
+  type        = string
+  default     = null
+}
+
+variable "k3d_cluster_name" {
+  description = "Nome do cluster k3d usado para importar imagens locais."
+  type        = string
+  default     = "mycluster"
+}
