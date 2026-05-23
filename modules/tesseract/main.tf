@@ -265,6 +265,8 @@ resource "kubernetes_service_v1" "api" {
 }
 
 resource "kubernetes_manifest" "api_tls_certificate" {
+  count = var.enable_ingress ? 1 : 0
+
   manifest = {
     apiVersion = "cert-manager.io/v1"
     kind       = "Certificate"
@@ -286,6 +288,8 @@ resource "kubernetes_manifest" "api_tls_certificate" {
 }
 
 resource "kubernetes_ingress_v1" "api" {
+  count = var.enable_ingress ? 1 : 0
+
   metadata {
     name      = "tesseract-api"
     namespace = kubernetes_namespace_v1.tesseract.metadata[0].name

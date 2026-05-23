@@ -92,15 +92,15 @@ module "tesseract" {
   tesseract_ocr_image = var.tesseract_ocr_image
   api_build_context   = var.tesseract_api_build_context
   ocr_build_context   = var.tesseract_ocr_build_context
+  api_replicas        = var.tesseract_api_replicas
+  enable_ingress      = var.tesseract_enable_ingress && var.domain_name != ""
 
   providers = {
     kubernetes = kubernetes
   }
 
   depends_on = [
-    module.k3d_cluster,
-    module.traefik,
-    module.networking
+    module.k3d_cluster
   ]
 }
 

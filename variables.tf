@@ -86,6 +86,18 @@ variable "tesseract_ocr_build_context" {
   default     = null
 }
 
+variable "tesseract_api_replicas" {
+  description = "Quantidade de replicas da API Tesseract."
+  type        = number
+  default     = 1
+}
+
+variable "tesseract_enable_ingress" {
+  description = "Habilita Certificate/Ingress publico para a API Tesseract."
+  type        = bool
+  default     = true
+}
+
 variable "cloudflare_api_token" {
   description = "Cloudflare API Token"
   type        = string

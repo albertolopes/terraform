@@ -74,3 +74,9 @@ variable "k3d_cluster_name" {
   type        = string
   default     = "mycluster"
 }
+
+variable "enable_ingress" {
+  description = "Habilita Certificate/Ingress publico para a API."
+  type        = bool
+  default     = true
+}
