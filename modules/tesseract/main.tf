@@ -33,13 +33,14 @@ resource "null_resource" "build_import_tesseract_ocr_image" {
     image         = var.tesseract_ocr_image
     build_context = var.ocr_build_context
     dockerfile    = var.ocr_dockerfile == null ? "" : var.ocr_dockerfile
-    tessdata      = var.ocr_tessdata_file == null ? "" : filesha256(var.ocr_tessdata_file)
+    tessdata_repo = var.ocr_tessdata_repo
+    rebuild_token = var.ocr_rebuild_token
   }
 
   provisioner "local-exec" {
     command = <<-EOT
       set -e
-      docker build --platform linux/amd64 ${var.ocr_dockerfile == null ? "" : "-f ${var.ocr_dockerfile}"} -t ${var.tesseract_ocr_image} ${var.ocr_build_context}
+      docker build --platform linux/amd64 ${var.ocr_dockerfile == null ? "" : "-f ${var.ocr_dockerfile}"} --build-arg TESSDATA_REPO=${var.ocr_tessdata_repo} -t ${var.tesseract_ocr_image} ${var.ocr_build_context}
       k3d image import --cluster ${var.k3d_cluster_name} ${var.tesseract_ocr_image}
     EOT
   }
@@ -105,7 +106,17 @@ resource "kubernetes_deployment_v1" "tesseract_ocr" {
 
           env {
             name  = "TESSERACT_LANG"
-            value = "por"
+            value = "por+eng"
+          }
+
+          env {
+            name  = "TESSERACT_OEM"
+            value = "1"
+          }
+
+          env {
+            name  = "TESSERACT_PSM"
+            value = "6"
           }
 
           port {

@@ -94,9 +94,15 @@ module "tesseract" {
   api_dockerfile      = null
   ocr_build_context   = path.module
   ocr_dockerfile      = "${path.module}/docker/tesseract-ocr-service/Dockerfile"
-  ocr_tessdata_file   = "${path.module}/modules/tesseract/tessdata/por.traineddata"
-  api_replicas        = 0
-  enable_ingress      = var.tesseract_enable_ingress && var.domain_name != ""
+  ocr_tessdata_repo   = "tessdata_best"
+  ocr_rebuild_token = sha256(join("", [
+    filesha256("${path.module}/.dockerignore"),
+    filesha256("${path.module}/docker/tesseract-ocr-service/Dockerfile"),
+    filesha256("${path.module}/docker/tesseract-ocr-service/app.py"),
+    filesha256("${path.module}/docker/tesseract-ocr-service/requirements.txt")
+  ]))
+  api_replicas   = 0
+  enable_ingress = var.tesseract_enable_ingress && var.domain_name != ""
 
   providers = {
     kubernetes = kubernetes

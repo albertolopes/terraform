@@ -81,10 +81,16 @@ variable "ocr_dockerfile" {
   default     = null
 }
 
-variable "ocr_tessdata_file" {
-  description = "Arquivo traineddata usado pelo OCR. Entra nos triggers para rebuild da imagem."
+variable "ocr_tessdata_repo" {
+  description = "Repositorio oficial de modelos Tesseract usado no build. Use tessdata_best para qualidade ou tessdata_fast para performance."
   type        = string
-  default     = null
+  default     = "tessdata_best"
+}
+
+variable "ocr_rebuild_token" {
+  description = "Token usado para forcar rebuild/import da imagem OCR quando arquivos fonte mudam."
+  type        = string
+  default     = ""
 }
 
 variable "k3d_cluster_name" {

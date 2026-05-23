@@ -1,8 +1,9 @@
 import io
 import os
+import re
 from typing import Annotated
 
-from fastapi import FastAPI, File, HTTPException, Request, UploadFile
+from fastapi import FastAPI, File, HTTPException, Query, Request, UploadFile
 from fastapi.responses import JSONResponse
 from pdf2image import convert_from_bytes
 from PIL import Image, UnidentifiedImageError
@@ -12,8 +13,11 @@ import pytesseract
 app = FastAPI(title="Tesseract OCR")
 
 MAX_BODY_BYTES = int(os.getenv("MAX_BODY_BYTES", "12582912"))
-DEFAULT_LANG = os.getenv("TESSERACT_LANG", "por")
+DEFAULT_LANG = os.getenv("TESSERACT_LANG", "por+eng")
+DEFAULT_OEM = int(os.getenv("TESSERACT_OEM", "1"))
+DEFAULT_PSM = int(os.getenv("TESSERACT_PSM", "6"))
 TESSDATA_PREFIX = os.getenv("TESSDATA_PREFIX", "/usr/share/tesseract-ocr/5/tessdata")
+SAFE_WHITELIST = re.compile(r"^[^\s]+$")
 
 
 @app.middleware("http")
@@ -38,6 +42,9 @@ async def ocr(
     request: Request,
     file: Annotated[UploadFile | None, File()] = None,
     lang: str = DEFAULT_LANG,
+    oem: int = Query(DEFAULT_OEM, ge=0, le=3),
+    psm: int = Query(DEFAULT_PSM, ge=0, le=13),
+    whitelist: str | None = Query(None),
 ):
     if file is not None:
         payload = await file.read()
@@ -53,15 +60,22 @@ async def ocr(
         raise HTTPException(status_code=413, detail="Request body too large")
 
     try:
-        text = _extract_text(payload, content_type, lang)
+        text = _extract_text(payload, content_type, lang, oem, psm, whitelist)
     except Exception as exc:
         raise HTTPException(status_code=422, detail=f"OCR failed: {exc}") from exc
 
     return {"text": text}
 
 
-def _extract_text(payload: bytes, content_type: str, lang: str) -> str:
-    config = f"--tessdata-dir {TESSDATA_PREFIX}"
+def _extract_text(
+    payload: bytes,
+    content_type: str,
+    lang: str,
+    oem: int,
+    psm: int,
+    whitelist: str | None,
+) -> str:
+    config = _build_tesseract_config(oem, psm, whitelist)
 
     if content_type == "application/pdf" or payload.startswith(b"%PDF"):
         pages = convert_from_bytes(payload)
@@ -75,3 +89,21 @@ def _extract_text(payload: bytes, content_type: str, lang: str) -> str:
         raise ValueError("Unsupported file format") from exc
 
     return pytesseract.image_to_string(image, lang=lang, config=config)
+
+
+def _build_tesseract_config(oem: int, psm: int, whitelist: str | None) -> str:
+    config = [
+        "--tessdata-dir",
+        TESSDATA_PREFIX,
+        "--oem",
+        str(oem),
+        "--psm",
+        str(psm),
+    ]
+
+    if whitelist:
+        if not SAFE_WHITELIST.fullmatch(whitelist):
+            raise ValueError("whitelist must not contain whitespace")
+        config.extend(["-c", f"tessedit_char_whitelist={whitelist}"])
+
+    return " ".join(config)
