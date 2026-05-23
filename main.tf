@@ -90,10 +90,10 @@ module "tesseract" {
   hostname            = var.tesseract_hostname
   api_image           = var.tesseract_api_image
   tesseract_ocr_image = var.tesseract_ocr_image
-  api_build_context   = var.tesseract_api_build_context
-  api_dockerfile      = var.tesseract_api_dockerfile
-  ocr_build_context   = var.tesseract_ocr_build_context
-  api_replicas        = var.tesseract_api_replicas
+  api_build_context   = null
+  api_dockerfile      = null
+  ocr_build_context   = "${path.module}/docker/tesseract-ocr-service"
+  api_replicas        = 0
   enable_ingress      = var.tesseract_enable_ingress && var.domain_name != ""
 
   providers = {

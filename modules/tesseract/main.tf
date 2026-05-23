@@ -36,6 +36,7 @@ resource "null_resource" "build_import_tesseract_ocr_image" {
 
   provisioner "local-exec" {
     command = <<-EOT
+      set -e
       docker build --platform linux/amd64 -t ${var.tesseract_ocr_image} ${var.ocr_build_context}
       k3d image import --cluster ${var.k3d_cluster_name} ${var.tesseract_ocr_image}
     EOT
@@ -53,6 +54,7 @@ resource "null_resource" "build_import_api_image" {
 
   provisioner "local-exec" {
     command = <<-EOT
+      set -e
       docker build --platform linux/amd64 ${var.api_dockerfile == null ? "" : "-f ${var.api_dockerfile}"} -t ${var.api_image} ${var.api_build_context}
       k3d image import --cluster ${var.k3d_cluster_name} ${var.api_image}
     EOT
