@@ -15,7 +15,9 @@ locals {
     app = "tesseract-ocr"
   }
 
-  api_host = "${var.hostname}.${var.domain_name}"
+  public_host         = "${var.hostname}.${var.domain_name}"
+  public_service_name = var.api_replicas > 0 ? kubernetes_service_v1.api.metadata[0].name : kubernetes_service_v1.tesseract_ocr.metadata[0].name
+  public_service_port = var.api_replicas > 0 ? 8080 : 8081
 }
 
 resource "kubernetes_namespace_v1" "tesseract" {
@@ -46,11 +48,12 @@ resource "null_resource" "build_import_api_image" {
   triggers = {
     image         = var.api_image
     build_context = var.api_build_context
+    dockerfile    = var.api_dockerfile == null ? "" : var.api_dockerfile
   }
 
   provisioner "local-exec" {
     command = <<-EOT
-      docker build --platform linux/amd64 -t ${var.api_image} ${var.api_build_context}
+      docker build --platform linux/amd64 ${var.api_dockerfile == null ? "" : "-f ${var.api_dockerfile}"} -t ${var.api_image} ${var.api_build_context}
       k3d image import --cluster ${var.k3d_cluster_name} ${var.api_image}
     EOT
   }
@@ -271,17 +274,17 @@ resource "kubernetes_manifest" "api_tls_certificate" {
     apiVersion = "cert-manager.io/v1"
     kind       = "Certificate"
     metadata = {
-      name      = "tesseract-api-tls"
+      name      = "tesseract-tls"
       namespace = kubernetes_namespace_v1.tesseract.metadata[0].name
     }
     spec = {
-      secretName = "tesseract-api-tls"
+      secretName = "tesseract-tls"
       issuerRef = {
         name = "letsencrypt-cloudflare"
         kind = "ClusterIssuer"
       }
       dnsNames = [
-        local.api_host
+        local.public_host
       ]
     }
   }
@@ -291,7 +294,7 @@ resource "kubernetes_ingress_v1" "api" {
   count = var.enable_ingress ? 1 : 0
 
   metadata {
-    name      = "tesseract-api"
+    name      = "tesseract"
     namespace = kubernetes_namespace_v1.tesseract.metadata[0].name
     annotations = {
       "kubernetes.io/ingress.class"                      = "traefik"
@@ -303,7 +306,7 @@ resource "kubernetes_ingress_v1" "api" {
     ingress_class_name = "traefik"
 
     rule {
-      host = local.api_host
+      host = local.public_host
 
       http {
         path {
@@ -312,10 +315,10 @@ resource "kubernetes_ingress_v1" "api" {
 
           backend {
             service {
-              name = kubernetes_service_v1.api.metadata[0].name
+              name = local.public_service_name
 
               port {
-                number = 8080
+                number = local.public_service_port
               }
             }
           }
@@ -324,13 +327,14 @@ resource "kubernetes_ingress_v1" "api" {
     }
 
     tls {
-      hosts       = [local.api_host]
-      secret_name = "tesseract-api-tls"
+      hosts       = [local.public_host]
+      secret_name = "tesseract-tls"
     }
   }
 
   depends_on = [
     kubernetes_service_v1.api,
+    kubernetes_service_v1.tesseract_ocr,
     kubernetes_manifest.api_tls_certificate
   ]
 }

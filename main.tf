@@ -91,6 +91,7 @@ module "tesseract" {
   api_image           = var.tesseract_api_image
   tesseract_ocr_image = var.tesseract_ocr_image
   api_build_context   = var.tesseract_api_build_context
+  api_dockerfile      = var.tesseract_api_dockerfile
   ocr_build_context   = var.tesseract_ocr_build_context
   api_replicas        = var.tesseract_api_replicas
   enable_ingress      = var.tesseract_enable_ingress && var.domain_name != ""
@@ -100,7 +101,9 @@ module "tesseract" {
   }
 
   depends_on = [
-    module.k3d_cluster
+    module.k3d_cluster,
+    module.networking,
+    module.traefik
   ]
 }
 

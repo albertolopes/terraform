@@ -63,6 +63,12 @@ variable "api_build_context" {
   default     = null
 }
 
+variable "api_dockerfile" {
+  description = "Dockerfile usado para build da API. Use null para usar o Dockerfile do contexto."
+  type        = string
+  default     = null
+}
+
 variable "ocr_build_context" {
   description = "Diretorio com o Dockerfile do OCR para build/import local no k3d. Use null para nao buildar."
   type        = string

@@ -15,5 +15,5 @@ output "tesseract_ocr_service_name" {
 
 output "api_url" {
   description = "URL publica da API Tesseract."
-  value       = "https://${local.api_host}"
+  value       = "https://${local.public_host}"
 }

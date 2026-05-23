@@ -80,6 +80,12 @@ variable "tesseract_api_build_context" {
   default     = null
 }
 
+variable "tesseract_api_dockerfile" {
+  description = "Dockerfile usado para build da API Tesseract. Use null para usar o Dockerfile do contexto."
+  type        = string
+  default     = null
+}
+
 variable "tesseract_ocr_build_context" {
   description = "Diretorio com o Dockerfile do Tesseract OCR para build/import local no k3d. Use null para nao buildar."
   type        = string
