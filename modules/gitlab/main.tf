@@ -476,9 +476,16 @@ resource "helm_release" "gitlab_runner" {
     runners:
       config: |
         [[runners]]
+          environment = [
+            "DOCKER_HOST=tcp://docker:2375",
+            "DOCKER_TLS_CERTDIR=",
+            "DOCKER_DRIVER=overlay2",
+            "DOCKER_BUILDKIT=1"
+          ]
           [runners.kubernetes]
-            image = "docker:25.0"
+            image = "docker:25.0.5"
             privileged = true
+            services_privileged = true
             poll_timeout = 600
             clone_url = "http://gitlab-webservice-default.${var.namespace}.svc.cluster.local:8181"
             cpu_request = "500m"
@@ -503,7 +510,7 @@ resource "helm_release" "gitlab_runner" {
             AuthenticationType = "access-key"
             PathStyle = true
           [[runners.kubernetes.host_aliases]]
-            ip = "127.0.0.1"
+            ip = "${var.traefik_service_cluster_ip}"
             hostnames = ["registry.${var.domain_name}"]
 
       privileged: true
