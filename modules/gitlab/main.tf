@@ -479,7 +479,7 @@ resource "helm_release" "gitlab_runner" {
           environment = [
             "DOCKER_HOST=tcp://docker:2375",
             "DOCKER_TLS_CERTDIR=",
-            "DOCKER_DRIVER=overlay2",
+            "DOCKER_DRIVER=vfs",
             "DOCKER_BUILDKIT=1"
           ]
           [runners.kubernetes]
