@@ -331,6 +331,10 @@ resource "kubernetes_deployment_v1" "meu_album_postgres" {
   spec {
     replicas = 1
 
+    strategy {
+      type = "Recreate"
+    }
+
     selector {
       match_labels = {
         app = "meu-album-postgres"
@@ -411,6 +415,8 @@ resource "kubernetes_deployment_v1" "meu_album_postgres" {
             }
             initial_delay_seconds = 30
             period_seconds        = 10
+            timeout_seconds       = 5
+            failure_threshold     = 6
           }
 
           readiness_probe {
@@ -419,6 +425,8 @@ resource "kubernetes_deployment_v1" "meu_album_postgres" {
             }
             initial_delay_seconds = 10
             period_seconds        = 5
+            timeout_seconds       = 5
+            failure_threshold     = 6
           }
         }
 

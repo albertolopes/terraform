@@ -195,6 +195,20 @@ resource "helm_release" "gitlab" {
       webservice:
         minReplicas: 1
         maxReplicas: 1
+        deployment:
+          readinessProbe:
+            timeoutSeconds: 10
+            failureThreshold: 6
+          livenessProbe:
+            timeoutSeconds: 30
+            failureThreshold: 6
+        workhorse:
+          readinessProbe:
+            timeoutSeconds: 10
+            failureThreshold: 6
+          livenessProbe:
+            timeoutSeconds: 30
+            failureThreshold: 6
         resources:
           requests:
             cpu: 800m
@@ -226,6 +240,15 @@ resource "helm_release" "gitlab" {
               secret: gitlab-minio-secret
               key: connection
       gitaly:
+        statefulset:
+          readinessProbe:
+            timeoutSeconds: 10
+            failureThreshold: 6
+          livenessProbe:
+            timeoutSeconds: 10
+            failureThreshold: 6
+          startupProbe:
+            timeoutSeconds: 10
         resources:
           requests:
             cpu: 400m
@@ -240,6 +263,13 @@ resource "helm_release" "gitlab" {
       gitlab-shell:
         minReplicas: 1
         maxReplicas: 1
+        deployment:
+          readinessProbe:
+            timeoutSeconds: 10
+            failureThreshold: 6
+          livenessProbe:
+            timeoutSeconds: 10
+            failureThreshold: 6
 
     gitlab-kas:
       minReplicas: 1
@@ -259,6 +289,13 @@ resource "helm_release" "gitlab" {
       hpa:
         minReplicas: 1
         maxReplicas: 1
+      deployment:
+        readinessProbe:
+          timeoutSeconds: 10
+          failureThreshold: 6
+        livenessProbe:
+          timeoutSeconds: 10
+          failureThreshold: 6
       resources:
         requests:
           cpu: 200m
@@ -464,6 +501,8 @@ resource "helm_release" "gitlab_runner" {
     <<-YAML
     gitlabUrl: http://gitlab-webservice-default.${var.namespace}.svc.cluster.local:8181
     runnerToken: "${var.runner_authentication_token}"
+    concurrent: 1
+    checkInterval: 10
 
     resources:
       requests:
