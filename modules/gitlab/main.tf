@@ -225,7 +225,7 @@ resource "helm_release" "gitlab" {
             cpu: 800m
             memory: 2Gi
           limits:
-            cpu: 5m
+            cpu: 3000m
             memory: 6Gi
       sidekiq:
         minReplicas: 1
