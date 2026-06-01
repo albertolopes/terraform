@@ -115,6 +115,25 @@ module "tesseract" {
   ]
 }
 
+module "uptime_kuma" {
+  source         = "./modules/uptime-kuma"
+  domain_name    = var.domain_name
+  hostname       = var.uptime_kuma_hostname
+  image          = var.uptime_kuma_image
+  storage_size   = var.uptime_kuma_storage_size
+  enable_ingress = var.uptime_kuma_enable_ingress && var.domain_name != ""
+
+  providers = {
+    kubernetes = kubernetes
+  }
+
+  depends_on = [
+    module.k3d_cluster,
+    module.networking,
+    module.traefik
+  ]
+}
+
 # --- ESTRUTURA PARA O GITLAB ---
 
 resource "kubernetes_namespace_v1" "gitlab" {
@@ -252,6 +271,7 @@ module "cloudflare" {
     { hostname = "minio-console", service = "http://traefik.traefik.svc.cluster.local:80" },
     { hostname = "authentik", service = "http://traefik.traefik.svc.cluster.local:80" },
     { hostname = var.tesseract_hostname, service = "http://traefik.traefik.svc.cluster.local:80" },
+    { hostname = var.uptime_kuma_hostname, service = "http://traefik.traefik.svc.cluster.local:80" },
     { hostname = "db", service = "tcp://${module.postgres.meu_album_postgres_service_name}.${module.postgres.meu_album_postgres_namespace}.svc.cluster.local:5432" },
 
     { hostname = "", service = "http://traefik.traefik.svc.cluster.local:80" },
@@ -264,5 +284,5 @@ module "cloudflare" {
     kubernetes = kubernetes
   }
 
-  depends_on = [module.k3d_cluster, module.networking, module.tesseract]
+  depends_on = [module.k3d_cluster, module.networking, module.tesseract, module.uptime_kuma]
 }

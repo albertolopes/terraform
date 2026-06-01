@@ -38,3 +38,8 @@ output "tesseract_api_url" {
   description = "URL publica da API Tesseract."
   value       = module.tesseract.api_url
 }
+
+output "uptime_kuma_url" {
+  description = "URL publica do Uptime Kuma."
+  value       = module.uptime_kuma.url
+}

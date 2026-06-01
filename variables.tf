@@ -104,6 +104,30 @@ variable "tesseract_enable_ingress" {
   default     = true
 }
 
+variable "uptime_kuma_hostname" {
+  description = "Subdominio publico do Uptime Kuma."
+  type        = string
+  default     = "uptime"
+}
+
+variable "uptime_kuma_image" {
+  description = "Imagem do Uptime Kuma."
+  type        = string
+  default     = "louislam/uptime-kuma:1"
+}
+
+variable "uptime_kuma_storage_size" {
+  description = "Tamanho do volume persistente do Uptime Kuma."
+  type        = string
+  default     = "5Gi"
+}
+
+variable "uptime_kuma_enable_ingress" {
+  description = "Habilita Certificate/Ingress publico para o Uptime Kuma."
+  type        = bool
+  default     = true
+}
+
 variable "cloudflare_api_token" {
   description = "Cloudflare API Token"
   type        = string
