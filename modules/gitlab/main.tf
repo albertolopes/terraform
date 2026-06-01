@@ -225,8 +225,8 @@ resource "helm_release" "gitlab" {
             cpu: 800m
             memory: 2Gi
           limits:
-            cpu: 2500m
-            memory: 4Gi
+            cpu: 5m
+            memory: 6Gi
       sidekiq:
         minReplicas: 1
         maxReplicas: 1
@@ -243,8 +243,8 @@ resource "helm_release" "gitlab" {
             cpu: 300m
             memory: 1Gi
           limits:
-            cpu: 500m
-            memory: 1Gi
+            cpu: 1000m
+            memory: 2Gi
         backups:
           objectStorage:
             config:
@@ -265,7 +265,7 @@ resource "helm_release" "gitlab" {
             cpu: 1000m
             memory: 2Gi
           limits:
-            cpu: 2000m
+            cpu: 3000m
             memory: 3Gi
         persistence:
           enabled: true
@@ -520,8 +520,8 @@ resource "helm_release" "gitlab_runner" {
         cpu: 100m
         memory: 128Mi
       limits:
-        cpu: 500m
-        memory: 2Gi
+        cpu: 3000m
+        memory: 3Gi
 
     runners:
       config: |
