@@ -116,12 +116,13 @@ module "tesseract" {
 }
 
 module "uptime_kuma" {
-  source         = "./modules/uptime-kuma"
-  domain_name    = var.domain_name
-  hostname       = var.uptime_kuma_hostname
-  image          = var.uptime_kuma_image
-  storage_size   = var.uptime_kuma_storage_size
-  enable_ingress = var.uptime_kuma_enable_ingress && var.domain_name != ""
+  source             = "./modules/uptime-kuma"
+  domain_name        = var.domain_name
+  hostname           = var.uptime_kuma_hostname
+  image              = var.uptime_kuma_image
+  storage_size       = var.uptime_kuma_storage_size
+  enable_ingress     = var.uptime_kuma_enable_ingress && var.domain_name != ""
+  enable_certificate = var.uptime_kuma_enable_certificate
 
   providers = {
     kubernetes = kubernetes

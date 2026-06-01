@@ -123,9 +123,15 @@ variable "uptime_kuma_storage_size" {
 }
 
 variable "uptime_kuma_enable_ingress" {
-  description = "Habilita Certificate/Ingress publico para o Uptime Kuma."
+  description = "Habilita Ingress publico para o Uptime Kuma."
   type        = bool
   default     = true
+}
+
+variable "uptime_kuma_enable_certificate" {
+  description = "Habilita Certificate/TLS via cert-manager para o Uptime Kuma."
+  type        = bool
+  default     = false
 }
 
 variable "kubernetes_config_path" {

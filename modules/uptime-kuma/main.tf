@@ -11,8 +11,9 @@ locals {
     app = "uptime-kuma"
   }
 
-  public_host    = "${var.hostname}.${var.domain_name}"
-  ingress_active = var.enable_ingress && var.domain_name != ""
+  public_host        = "${var.hostname}.${var.domain_name}"
+  ingress_active     = var.enable_ingress && var.domain_name != ""
+  certificate_active = local.ingress_active && var.enable_certificate
 }
 
 resource "kubernetes_namespace_v1" "uptime_kuma" {
@@ -144,7 +145,7 @@ resource "kubernetes_service_v1" "uptime_kuma" {
 }
 
 resource "kubernetes_manifest" "uptime_kuma_tls_certificate" {
-  count = local.ingress_active ? 1 : 0
+  count = local.certificate_active ? 1 : 0
 
   manifest = {
     apiVersion = "cert-manager.io/v1"
@@ -202,9 +203,13 @@ resource "kubernetes_ingress_v1" "uptime_kuma" {
       }
     }
 
-    tls {
-      hosts       = [local.public_host]
-      secret_name = "uptime-kuma-tls"
+    dynamic "tls" {
+      for_each = local.certificate_active ? [1] : []
+
+      content {
+        hosts       = [local.public_host]
+        secret_name = "uptime-kuma-tls"
+      }
     }
   }
 

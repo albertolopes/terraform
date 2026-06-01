@@ -28,7 +28,13 @@ variable "storage_size" {
 }
 
 variable "enable_ingress" {
-  description = "Habilita Certificate/Ingress publico para o Uptime Kuma."
+  description = "Habilita Ingress publico para o Uptime Kuma."
   type        = bool
   default     = true
+}
+
+variable "enable_certificate" {
+  description = "Habilita Certificate/TLS via cert-manager para o Ingress do Uptime Kuma."
+  type        = bool
+  default     = false
 }
