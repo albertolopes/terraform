@@ -184,6 +184,10 @@ resource "helm_release" "gitlab" {
           secret: gitlab-external-postgres-password
           key: password
 
+      rails:
+        bootsnap:
+          enabled: false
+
     certmanager: { install: false }
     redis: { install: false }
     postgresql: { install: false }
@@ -195,13 +199,20 @@ resource "helm_release" "gitlab" {
       webservice:
         minReplicas: 1
         maxReplicas: 1
+        workerProcesses: 0
+        puma:
+          threads:
+            min: 1
+            max: 2
         deployment:
           readinessProbe:
+            initialDelaySeconds: 0
             timeoutSeconds: 10
-            failureThreshold: 6
+            failureThreshold: 60
           livenessProbe:
-            timeoutSeconds: 30
-            failureThreshold: 6
+            initialDelaySeconds: 1800
+            timeoutSeconds: 10
+            failureThreshold: 30
         workhorse:
           readinessProbe:
             timeoutSeconds: 10
@@ -251,11 +262,11 @@ resource "helm_release" "gitlab" {
             timeoutSeconds: 10
         resources:
           requests:
-            cpu: 400m
-            memory: 1Gi
+            cpu: 1000m
+            memory: 2Gi
           limits:
-            cpu: 500m
-            memory: 1Gi
+            cpu: 2000m
+            memory: 3Gi
         persistence:
           enabled: true
           storageClass: "local-path"
