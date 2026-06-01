@@ -128,6 +128,18 @@ variable "uptime_kuma_enable_ingress" {
   default     = true
 }
 
+variable "kubernetes_config_path" {
+  description = "Caminho do kubeconfig usado pelos providers Kubernetes, Helm e Kubectl. Use null para .k3d_kubeconfig local."
+  type        = string
+  default     = null
+}
+
+variable "kubernetes_host" {
+  description = "Endpoint da API Kubernetes. Use null para respeitar o server definido no kubeconfig."
+  type        = string
+  default     = null
+}
+
 variable "cloudflare_api_token" {
   description = "Cloudflare API Token"
   type        = string

@@ -50,23 +50,23 @@ terraform {
 }
 
 locals {
-  kubeconfig_path = "${path.module}/.k3d_kubeconfig"
+  kubeconfig_path = var.kubernetes_config_path == null ? "${path.module}/.k3d_kubeconfig" : var.kubernetes_config_path
 }
 
 provider "kubernetes" {
-  host        = "https://127.0.0.1:6443"
+  host        = var.kubernetes_host
   config_path = local.kubeconfig_path
 }
 
 provider "helm" {
   kubernetes {
-    host        = "https://127.0.0.1:6443"
+    host        = var.kubernetes_host
     config_path = local.kubeconfig_path
   }
 }
 
 provider "kubectl" {
-  host        = "https://127.0.0.1:6443"
+  host        = var.kubernetes_host
   config_path = local.kubeconfig_path
 }
 
