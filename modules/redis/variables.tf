@@ -31,12 +31,12 @@ variable "resources" {
   })
   default = {
     requests = {
-      cpu    = "100m"
-      memory = "256Mi"
+      cpu    = "500m"
+      memory = "512Mi"
     }
     limits = {
-      cpu    = "1000m"
-      memory = "1Gi"
+      cpu    = "2000m"
+      memory = "2Gi"
     }
   }
 }

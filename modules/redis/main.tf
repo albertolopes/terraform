@@ -99,7 +99,9 @@ resource "kubernetes_deployment_v1" "redis" {
             "--requirepass",
             "$(REDIS_PASSWORD)",
             "--appendonly",
-            "yes"
+            "no",
+            "--save",
+            ""
           ]
 
           resources {
