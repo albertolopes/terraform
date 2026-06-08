@@ -102,9 +102,13 @@ resource "kubernetes_deployment_v1" "authentik_server" {
     template {
       metadata { labels = { app = "authentik-server" } }
       spec {
+        node_selector = {
+          "kubernetes.io/hostname" = "k3d-mycluster-agent-0"
+        }
+
         container {
           name  = "server"
-          image = "ghcr.io/goauthentik/server:latest"
+          image = "ghcr.io/goauthentik/server:2025.2.4"
           args  = ["server"]
 
           env_from {
@@ -116,6 +120,17 @@ resource "kubernetes_deployment_v1" "authentik_server" {
 
           port { container_port = 9000 }
           port { container_port = 9443 }
+
+          resources {
+            requests = {
+              cpu    = "250m"
+              memory = "768Mi"
+            }
+            limits = {
+              cpu    = "1500m"
+              memory = "1536Mi"
+            }
+          }
         }
       }
     }
@@ -247,9 +262,13 @@ resource "kubernetes_deployment_v1" "authentik_worker" {
     template {
       metadata { labels = { app = "authentik-worker" } }
       spec {
+        node_selector = {
+          "kubernetes.io/hostname" = "k3d-mycluster-agent-0"
+        }
+
         container {
           name  = "worker"
-          image = "ghcr.io/goauthentik/server:latest"
+          image = "ghcr.io/goauthentik/server:2025.2.4"
           args  = ["worker"]
 
           env_from {
@@ -257,6 +276,17 @@ resource "kubernetes_deployment_v1" "authentik_worker" {
           }
           env_from {
             secret_ref { name = kubernetes_secret_v1.authentik_env.metadata[0].name }
+          }
+
+          resources {
+            requests = {
+              cpu    = "150m"
+              memory = "512Mi"
+            }
+            limits = {
+              cpu    = "1000m"
+              memory = "1024Mi"
+            }
           }
         }
       }
