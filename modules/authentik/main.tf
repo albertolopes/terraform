@@ -191,7 +191,7 @@ resource "kubernetes_ingress_v1" "authentik" {
     annotations = {
       "kubernetes.io/ingress.class"                       = "traefik"
       "traefik.ingress.kubernetes.io/router.entrypoints"  = "web,websecure"
-      "traefik.ingress.kubernetes.io/router.middlewares"  = "authentik-forwarded-headers@kubernetescrd"
+      "traefik.ingress.kubernetes.io/router.middlewares"  = "authentik-authentik-forwarded-headers@kubernetescrd"
       "traefik.ingress.kubernetes.io/service.server.port" = "9000"
     }
   }

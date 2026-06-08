@@ -285,5 +285,11 @@ module "cloudflare" {
     kubernetes = kubernetes
   }
 
-  depends_on = [module.k3d_cluster, module.networking, module.tesseract, module.uptime_kuma]
+  depends_on = [
+    module.k3d_cluster,
+    module.networking,
+    module.authentik,
+    module.tesseract,
+    module.uptime_kuma
+  ]
 }
