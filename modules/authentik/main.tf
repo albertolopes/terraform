@@ -143,6 +143,46 @@ resource "kubernetes_service_v1" "authentik_server" {
   }
 }
 
+resource "kubernetes_manifest" "authentik_forwarded_headers" {
+  manifest = {
+    apiVersion = "traefik.io/v1alpha1"
+    kind       = "Middleware"
+    metadata = {
+      name      = "authentik-forwarded-headers"
+      namespace = kubernetes_namespace_v1.authentik.metadata[0].name
+    }
+    spec = {
+      headers = {
+        customRequestHeaders = {
+          "X-Forwarded-Proto" = "https"
+          "X-Forwarded-Ssl"   = "on"
+        }
+      }
+    }
+  }
+}
+
+resource "kubernetes_manifest" "authentik_tls_certificate" {
+  manifest = {
+    apiVersion = "cert-manager.io/v1"
+    kind       = "Certificate"
+    metadata = {
+      name      = "authentik-tls"
+      namespace = kubernetes_namespace_v1.authentik.metadata[0].name
+    }
+    spec = {
+      secretName = "authentik-tls"
+      issuerRef = {
+        name = "letsencrypt-cloudflare"
+        kind = "ClusterIssuer"
+      }
+      dnsNames = [
+        "authentik.${var.domain_name}"
+      ]
+    }
+  }
+}
+
 # --- Authentik Ingress ---
 resource "kubernetes_ingress_v1" "authentik" {
   metadata {
@@ -151,7 +191,7 @@ resource "kubernetes_ingress_v1" "authentik" {
     annotations = {
       "kubernetes.io/ingress.class"                       = "traefik"
       "traefik.ingress.kubernetes.io/router.entrypoints"  = "web,websecure"
-      "traefik.ingress.kubernetes.io/router.middlewares"  = "traefik-force-https-header@kubernetescrd"
+      "traefik.ingress.kubernetes.io/router.middlewares"  = "authentik-forwarded-headers@kubernetescrd"
       "traefik.ingress.kubernetes.io/service.server.port" = "9000"
     }
   }
@@ -179,9 +219,18 @@ resource "kubernetes_ingress_v1" "authentik" {
         }
       }
     }
+
+    tls {
+      hosts       = ["authentik.${var.domain_name}"]
+      secret_name = "authentik-tls"
+    }
   }
 
-  depends_on = [kubernetes_service_v1.authentik_server]
+  depends_on = [
+    kubernetes_service_v1.authentik_server,
+    kubernetes_manifest.authentik_forwarded_headers,
+    kubernetes_manifest.authentik_tls_certificate
+  ]
 }
 
 # --- Authentik Worker ---
