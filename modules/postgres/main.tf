@@ -10,6 +10,15 @@ terraform {
   }
 }
 
+locals {
+  pgadmin_labels = {
+    app = "pgadmin"
+  }
+
+  pgadmin_public_host    = "${var.pgadmin_hostname}.${var.domain_name}"
+  pgadmin_ingress_active = var.pgadmin_enable_ingress && var.domain_name != ""
+}
+
 resource "random_pet" "pvc_suffix" {
   length = 2
 }
@@ -281,6 +290,259 @@ resource "kubernetes_service_v1" "postgres" {
   }
 
   depends_on = [null_resource.postgres_permissions]
+}
+
+resource "kubernetes_secret_v1" "pgadmin" {
+  metadata {
+    name      = "pgadmin-secret"
+    namespace = kubernetes_namespace_v1.postgres.metadata[0].name
+  }
+
+  data = {
+    PGADMIN_DEFAULT_EMAIL    = var.pgadmin_email
+    PGADMIN_DEFAULT_PASSWORD = var.pgadmin_password
+  }
+
+  type = "Opaque"
+}
+
+resource "kubernetes_config_map_v1" "pgadmin_servers" {
+  metadata {
+    name      = "pgadmin-servers"
+    namespace = kubernetes_namespace_v1.postgres.metadata[0].name
+  }
+
+  data = {
+    "servers.json" = jsonencode({
+      Servers = {
+        "1" = {
+          Name          = "PostgreSQL"
+          Group         = "Servers"
+          Host          = kubernetes_service_v1.postgres.metadata[0].name
+          Port          = 5433
+          MaintenanceDB = "postgres"
+          Username      = "postgres"
+          SSLMode       = "prefer"
+          Shared        = true
+          ConnectNow    = false
+        }
+      }
+    })
+  }
+}
+
+resource "kubernetes_persistent_volume_claim_v1" "pgadmin" {
+  metadata {
+    name      = "pgadmin-data"
+    namespace = kubernetes_namespace_v1.postgres.metadata[0].name
+  }
+
+  spec {
+    access_modes = ["ReadWriteOnce"]
+
+    resources {
+      requests = {
+        storage = var.pgadmin_storage_size
+      }
+    }
+
+    storage_class_name = "local-path"
+  }
+
+  wait_until_bound = false
+}
+
+resource "kubernetes_deployment_v1" "pgadmin" {
+  metadata {
+    name      = "pgadmin"
+    namespace = kubernetes_namespace_v1.postgres.metadata[0].name
+    labels    = local.pgadmin_labels
+  }
+
+  spec {
+    replicas = 1
+
+    strategy {
+      type = "Recreate"
+    }
+
+    selector {
+      match_labels = local.pgadmin_labels
+    }
+
+    template {
+      metadata {
+        labels = local.pgadmin_labels
+      }
+
+      spec {
+        security_context {
+          fs_group = 5050
+        }
+
+        container {
+          name  = "pgadmin"
+          image = "dpage/pgadmin4:8"
+
+          env {
+            name = "PGADMIN_DEFAULT_EMAIL"
+            value_from {
+              secret_key_ref {
+                name = kubernetes_secret_v1.pgadmin.metadata[0].name
+                key  = "PGADMIN_DEFAULT_EMAIL"
+              }
+            }
+          }
+
+          env {
+            name = "PGADMIN_DEFAULT_PASSWORD"
+            value_from {
+              secret_key_ref {
+                name = kubernetes_secret_v1.pgadmin.metadata[0].name
+                key  = "PGADMIN_DEFAULT_PASSWORD"
+              }
+            }
+          }
+
+          env {
+            name  = "PGADMIN_CONFIG_SERVER_MODE"
+            value = "True"
+          }
+
+          port {
+            name           = "http"
+            container_port = 80
+          }
+
+          liveness_probe {
+            http_get {
+              path = "/misc/ping"
+              port = 80
+            }
+            initial_delay_seconds = 60
+            period_seconds        = 20
+            timeout_seconds       = 5
+            failure_threshold     = 6
+          }
+
+          readiness_probe {
+            http_get {
+              path = "/misc/ping"
+              port = 80
+            }
+            initial_delay_seconds = 20
+            period_seconds        = 10
+            timeout_seconds       = 5
+            failure_threshold     = 12
+          }
+
+          volume_mount {
+            name       = "data"
+            mount_path = "/var/lib/pgadmin"
+          }
+
+          volume_mount {
+            name       = "servers"
+            mount_path = "/pgadmin4/servers.json"
+            sub_path   = "servers.json"
+            read_only  = true
+          }
+
+          resources {
+            requests = {
+              cpu    = "100m"
+              memory = "256Mi"
+            }
+            limits = {
+              cpu    = "500m"
+              memory = "512Mi"
+            }
+          }
+        }
+
+        volume {
+          name = "data"
+          persistent_volume_claim {
+            claim_name = kubernetes_persistent_volume_claim_v1.pgadmin.metadata[0].name
+          }
+        }
+
+        volume {
+          name = "servers"
+          config_map {
+            name = kubernetes_config_map_v1.pgadmin_servers.metadata[0].name
+          }
+        }
+      }
+    }
+  }
+
+  depends_on = [
+    kubernetes_service_v1.postgres,
+    kubernetes_secret_v1.pgadmin,
+    kubernetes_config_map_v1.pgadmin_servers
+  ]
+}
+
+resource "kubernetes_service_v1" "pgadmin" {
+  metadata {
+    name      = "pgadmin"
+    namespace = kubernetes_namespace_v1.postgres.metadata[0].name
+    labels    = local.pgadmin_labels
+  }
+
+  spec {
+    type     = "ClusterIP"
+    selector = local.pgadmin_labels
+
+    port {
+      name        = "http"
+      port        = 80
+      target_port = 80
+    }
+  }
+
+  depends_on = [kubernetes_deployment_v1.pgadmin]
+}
+
+resource "kubernetes_ingress_v1" "pgadmin" {
+  count = local.pgadmin_ingress_active ? 1 : 0
+
+  metadata {
+    name      = "pgadmin"
+    namespace = kubernetes_namespace_v1.postgres.metadata[0].name
+    annotations = {
+      "kubernetes.io/ingress.class"                      = "traefik"
+      "traefik.ingress.kubernetes.io/router.entrypoints" = "web,websecure"
+    }
+  }
+
+  spec {
+    ingress_class_name = "traefik"
+
+    rule {
+      host = local.pgadmin_public_host
+
+      http {
+        path {
+          path      = "/"
+          path_type = "Prefix"
+
+          backend {
+            service {
+              name = kubernetes_service_v1.pgadmin.metadata[0].name
+
+              port {
+                number = 80
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
+  depends_on = [kubernetes_service_v1.pgadmin]
 }
 
 resource "kubernetes_secret_v1" "meu_album_postgres_secret" {

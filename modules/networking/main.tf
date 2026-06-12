@@ -33,7 +33,7 @@ resource "helm_release" "cert_manager" {
   create_namespace = true
   version    = "v1.14.4"
   timeout    = 1800
-
+  
   set {
     name  = "installCRDs"
     value = "true"
@@ -43,7 +43,7 @@ resource "helm_release" "cert_manager" {
     name  = "podDnsPolicy"
     value = "None"
   }
-  
+
   set {
     name  = "podDnsConfig.nameservers[0]"
     value = "8.8.8.8"

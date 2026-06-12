@@ -23,7 +23,13 @@ module "networking" {
 # --- Databases & Storage ---
 
 module "postgres" {
-  source = "./modules/postgres"
+  source                 = "./modules/postgres"
+  domain_name            = var.domain_name
+  pgadmin_hostname       = var.pgadmin_hostname
+  pgadmin_email          = var.pgadmin_email
+  pgadmin_password       = var.pgadmin_password
+  pgadmin_storage_size   = var.pgadmin_storage_size
+  pgadmin_enable_ingress = var.pgadmin_enable_ingress && var.domain_name != ""
   providers = {
     kubernetes = kubernetes
     random     = random

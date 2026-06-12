@@ -3,6 +3,37 @@ output "postgres_password_secret_data" {
   value       = kubernetes_secret_v1.postgres_secret.data.POSTGRES_PASSWORD
 }
 
+output "postgres_namespace" {
+  description = "Namespace da instancia PostgreSQL principal."
+  value       = kubernetes_namespace_v1.postgres.metadata[0].name
+}
+
+output "postgres_service_name" {
+  description = "Service Kubernetes da instancia PostgreSQL principal."
+  value       = kubernetes_service_v1.postgres.metadata[0].name
+}
+
+output "postgres_admin_user" {
+  description = "Usuario administrador da instancia PostgreSQL principal."
+  value       = "postgres"
+}
+
+output "postgres_admin_password" {
+  description = "Senha do usuario administrador da instancia PostgreSQL principal."
+  value       = kubernetes_secret_v1.postgres_secret.data.POSTGRES_PASSWORD
+  sensitive   = true
+}
+
+output "pgadmin_url" {
+  description = "URL publica do pgAdmin."
+  value       = local.pgadmin_ingress_active ? "https://${local.pgadmin_public_host}" : null
+}
+
+output "pgadmin_email" {
+  description = "Email inicial de login do pgAdmin."
+  value       = var.pgadmin_email
+}
+
 output "meu_album_postgres_namespace" {
   description = "Namespace da instancia PostgreSQL exposta para o banco meu-album."
   value       = kubernetes_namespace_v1.postgres.metadata[0].name
