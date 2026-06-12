@@ -108,7 +108,7 @@ resource "kubernetes_deployment_v1" "authentik_server" {
 
         container {
           name  = "server"
-          image = "ghcr.io/goauthentik/server:2025.2.4"
+          image = "ghcr.io/goauthentik/server:2025.2.3"
           args  = ["server"]
 
           env_from {
@@ -268,7 +268,7 @@ resource "kubernetes_deployment_v1" "authentik_worker" {
 
         container {
           name  = "worker"
-          image = "ghcr.io/goauthentik/server:2025.2.4"
+          image = "ghcr.io/goauthentik/server:2025.2.3"
           args  = ["worker"]
 
           env_from {
