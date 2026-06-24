@@ -192,3 +192,75 @@ variable "cloudflare_zone_id" {
   description = "Cloudflare Zone ID"
   type        = string
 }
+
+variable "backup_device" {
+  description = "Particao dedicada para backups. Protecoes impedem uso de /dev/sda* e /dev/sdb*."
+  type        = string
+  default     = "/dev/sdc2"
+}
+
+variable "backup_mount_point" {
+  description = "Ponto de montagem persistente do disco de backup no host."
+  type        = string
+  default     = "/backup"
+}
+
+variable "backup_directories" {
+  description = "Diretorios criados no disco de backup."
+  type        = list(string)
+  default = [
+    "/backup/gitlab",
+    "/backup/postgres",
+    "/backup/minio",
+    "/backup/registry",
+    "/backup/logs"
+  ]
+}
+
+variable "gitlab_backup_host_path" {
+  description = "Diretorio do host exposto ao Kubernetes para armazenar backups finais do GitLab."
+  type        = string
+  default     = "/backup/gitlab"
+}
+
+variable "gitlab_backup_container_mount_path" {
+  description = "Caminho montado dentro dos pods dos CronJobs de backup/limpeza."
+  type        = string
+  default     = "/backup/gitlab"
+}
+
+variable "gitlab_backup_schedule" {
+  description = "Agendamento cron do backup diario do GitLab."
+  type        = string
+  default     = "0 2 * * *"
+}
+
+variable "gitlab_backup_cleanup_schedule" {
+  description = "Agendamento cron da limpeza de backups antigos do GitLab."
+  type        = string
+  default     = "30 3 * * *"
+}
+
+variable "gitlab_backup_retention_days" {
+  description = "Quantidade de dias para manter arquivos *_gitlab_backup.tar em /backup/gitlab."
+  type        = number
+  default     = 30
+}
+
+variable "gitlab_toolbox_label_selector" {
+  description = "Label selector usado para localizar dinamicamente o pod gitlab-toolbox."
+  type        = string
+  default     = "app=toolbox,release=gitlab"
+}
+
+variable "gitlab_backup_kubectl_image" {
+  description = "Imagem usada pelo CronJob customizado para executar kubectl exec no toolbox."
+  type        = string
+  default     = "bitnami/kubectl:1.30"
+}
+
+variable "k3d_cluster_name" {
+  description = "Nome do cluster k3d usado para validar se /backup esta bind-mounted nos nodes locais."
+  type        = string
+  default     = "mycluster"
+}

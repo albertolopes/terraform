@@ -30,6 +30,10 @@ Isso significa que o fluxo esperado de publicação passa por:
 
 ## 1. Pré-requisitos
 
+### Backup local do GitLab
+
+As instrucoes especificas para configurar o disco `/dev/sdc2`, montar `/backup` e ativar os CronJobs de backup do GitLab estao em [README-backup.md](README-backup.md).
+
 Para executar este projeto, as seguintes ferramentas precisam estar instaladas na máquina host (local ou servidor):
 
 - git
