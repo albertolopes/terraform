@@ -156,4 +156,7 @@ $KUBECTL_BIN --kubeconfig "$KUBECONFIG_PATH" config set-cluster "$CLUSTER_NAME" 
   --server="https://$SERVER_IP:$API_PORT" \
   --insecure-skip-tls-verify=true
 
+$KUBECTL_BIN --kubeconfig "$KUBECONFIG_PATH" config unset "clusters.$CLUSTER_NAME.certificate-authority-data" >/dev/null 2>&1 || true
+$KUBECTL_BIN --kubeconfig "$KUBECONFIG_PATH" config use-context "$CLUSTER_NAME" >/dev/null
+
 echo "Kubeconfig updated to use $SERVER_IP"
