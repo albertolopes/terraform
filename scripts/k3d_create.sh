@@ -60,8 +60,8 @@ if $K3D_BIN cluster list --no-headers | awk '{print $1}' | grep -xq "$name"; the
     echo "FORCE_RECREATE set — deleting existing cluster $name"
     $K3D_BIN cluster delete "$name" || true
   else
-    echo "Cluster $name already exists: skipping creation."
-    exit 0
+    echo "Cluster $name already exists: skipping creation and refreshing kubeconfig."
+    SKIP_CREATE=1
   fi
 fi
 
@@ -102,7 +102,9 @@ done
 
 echo "Executing: ${CMD[*]}"
 
-if [ "$DRY_RUN" = "1" ]; then
+if [ "${SKIP_CREATE:-0}" = "1" ]; then
+  echo "Skipping cluster create."
+elif [ "$DRY_RUN" = "1" ]; then
   echo "Dry run enabled, skipping execution"
 else
   "${CMD[@]}"
