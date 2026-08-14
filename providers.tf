@@ -51,20 +51,45 @@ terraform {
 
 locals {
   kubeconfig_path = var.kubernetes_config_path == null ? "${path.module}/.k3d_kubeconfig" : var.kubernetes_config_path
+  kubeconfig      = yamldecode(file(local.kubeconfig_path))
+
+  kubeconfig_cluster = local.kubeconfig.clusters[0].cluster
+  kubeconfig_user    = local.kubeconfig.users[0].user
+
+  kubernetes_host_source = var.kubernetes_host != null && var.kubernetes_host != "" ? var.kubernetes_host : local.kubeconfig_cluster.server
+  kubernetes_host        = replace(local.kubernetes_host_source, "https://0.0.0.0:", "https://127.0.0.1:")
+
+  kubernetes_insecure           = try(local.kubeconfig_cluster["insecure-skip-tls-verify"], false)
+  kubernetes_ca_certificate     = try(base64decode(local.kubeconfig_cluster["certificate-authority-data"]), null)
+  kubernetes_client_certificate = base64decode(local.kubeconfig_user["client-certificate-data"])
+  kubernetes_client_key         = base64decode(local.kubeconfig_user["client-key-data"])
 }
 
 provider "kubernetes" {
-  config_path = local.kubeconfig_path
+  host                   = local.kubernetes_host
+  insecure               = local.kubernetes_insecure
+  cluster_ca_certificate = local.kubernetes_ca_certificate
+  client_certificate     = local.kubernetes_client_certificate
+  client_key             = local.kubernetes_client_key
 }
 
 provider "helm" {
   kubernetes {
-    config_path = local.kubeconfig_path
+    host                   = local.kubernetes_host
+    insecure               = local.kubernetes_insecure
+    cluster_ca_certificate = local.kubernetes_ca_certificate
+    client_certificate     = local.kubernetes_client_certificate
+    client_key             = local.kubernetes_client_key
   }
 }
 
 provider "kubectl" {
-  config_path = local.kubeconfig_path
+  load_config_file       = false
+  host                   = local.kubernetes_host
+  insecure               = local.kubernetes_insecure
+  cluster_ca_certificate = local.kubernetes_ca_certificate
+  client_certificate     = local.kubernetes_client_certificate
+  client_key             = local.kubernetes_client_key
 }
 
 provider "docker" {}
