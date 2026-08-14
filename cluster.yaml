@@ -26,6 +26,18 @@ ports:
   - port: 5432:5432
     nodeFilters:
       - loadbalancer
+  - port: 25:25
+    nodeFilters:
+      - loadbalancer
+  - port: 465:465
+    nodeFilters:
+      - loadbalancer
+  - port: 587:587
+    nodeFilters:
+      - loadbalancer
+  - port: 993:993
+    nodeFilters:
+      - loadbalancer
 
 # 2. Configuração do Kubelet e Recursos
 registries:

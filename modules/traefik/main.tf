@@ -122,6 +122,14 @@ resource "kubernetes_config_map_v1" "traefik" {
               idleTimeout: "1800s"
         postgres:
           address: ":5432"
+        smtp:
+          address: ":25"
+        smtps:
+          address: ":465"
+        submission:
+          address: ":587"
+        imaps:
+          address: ":993"
         traefik:
           address: ":8080"
 
@@ -213,6 +221,26 @@ resource "kubernetes_deployment_v1" "traefik" {
           port {
             name           = "postgres"
             container_port = 5432
+          }
+
+          port {
+            name           = "smtp"
+            container_port = 25
+          }
+
+          port {
+            name           = "smtps"
+            container_port = 465
+          }
+
+          port {
+            name           = "submission"
+            container_port = 587
+          }
+
+          port {
+            name           = "imaps"
+            container_port = 993
           }
 
           port {
@@ -325,6 +353,30 @@ resource "kubernetes_service_v1" "traefik" {
       name        = "postgres"
       port        = 5432
       target_port = 5432
+    }
+
+    port {
+      name        = "smtp"
+      port        = 25
+      target_port = 25
+    }
+
+    port {
+      name        = "smtps"
+      port        = 465
+      target_port = 465
+    }
+
+    port {
+      name        = "submission"
+      port        = 587
+      target_port = 587
+    }
+
+    port {
+      name        = "imaps"
+      port        = 993
+      target_port = 993
     }
 
     port {

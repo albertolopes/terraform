@@ -141,6 +141,40 @@ module "uptime_kuma" {
   ]
 }
 
+resource "random_password" "stalwart_recovery_admin_password" {
+  length  = 32
+  special = false
+}
+
+module "mail" {
+  source = "./modules/mail"
+
+  domain_name                      = var.domain_name
+  cloudflare_zone_id               = var.cloudflare_zone_id
+  mail_hostname                    = var.mail_hostname
+  webmail_hostname                 = var.mail_webmail_hostname
+  admin_hostname                   = var.mail_admin_hostname
+  stalwart_storage_size            = var.mail_stalwart_storage_size
+  snappymail_storage_size          = var.mail_snappymail_storage_size
+  stalwart_recovery_admin_password = random_password.stalwart_recovery_admin_password.result
+  mail_server_ipv4                 = var.mail_server_ipv4
+  mail_server_ipv6                 = var.mail_server_ipv6
+
+  providers = {
+    cloudflare = cloudflare
+    helm       = helm
+    kubectl    = kubectl
+    kubernetes = kubernetes
+  }
+
+  depends_on = [
+    module.k3d_cluster,
+    module.networking,
+    module.traefik,
+    null_resource.wait_for_traefik_ingressroutetcp_crd
+  ]
+}
+
 # --- ESTRUTURA PARA O GITLAB ---
 
 resource "kubernetes_namespace_v1" "gitlab" {
@@ -279,6 +313,8 @@ module "cloudflare" {
     { hostname = "authentik", service = "http://traefik.traefik.svc.cluster.local:80" },
     { hostname = var.tesseract_hostname, service = "http://traefik.traefik.svc.cluster.local:80" },
     { hostname = var.uptime_kuma_hostname, service = "http://traefik.traefik.svc.cluster.local:80" },
+    { hostname = var.mail_webmail_hostname, service = "http://traefik.traefik.svc.cluster.local:80" },
+    { hostname = var.mail_admin_hostname, service = "http://traefik.traefik.svc.cluster.local:80" },
     { hostname = "db", service = "tcp://${module.postgres.meu_album_postgres_service_name}.${module.postgres.meu_album_postgres_namespace}.svc.cluster.local:5432" },
 
     { hostname = "", service = "http://traefik.traefik.svc.cluster.local:80" },
@@ -296,6 +332,7 @@ module "cloudflare" {
     module.networking,
     module.authentik,
     module.tesseract,
-    module.uptime_kuma
+    module.uptime_kuma,
+    module.mail
   ]
 }

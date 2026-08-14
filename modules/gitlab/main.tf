@@ -296,7 +296,9 @@ resource "helm_release" "gitlab" {
         proxyBodySize: "0"
         proxyBuffering: "off"
         annotations:
+          traefik.ingress.kubernetes.io/router.entrypoints: "web,websecure"
           traefik.ingress.kubernetes.io/router.middlewares: "${var.namespace}-traefik-force-https-header@kubernetescrd"
+          traefik.ingress.kubernetes.io/router.tls: "true"
       hpa:
         minReplicas: 1
         maxReplicas: 1
@@ -322,6 +324,44 @@ resource "helm_release" "gitlab" {
 
     YAML
   ]
+}
+
+resource "kubernetes_ingress_v1" "gitlab_registry_web" {
+  depends_on = [helm_release.gitlab]
+
+  metadata {
+    name      = "gitlab-registry-web"
+    namespace = var.namespace
+    annotations = {
+      "traefik.ingress.kubernetes.io/router.entrypoints" = "web"
+      "traefik.ingress.kubernetes.io/router.middlewares" = "${var.namespace}-traefik-force-https-header@kubernetescrd"
+    }
+  }
+
+  spec {
+    ingress_class_name = "traefik"
+
+    rule {
+      host = "registry.${var.domain_name}"
+
+      http {
+        path {
+          path      = "/"
+          path_type = "Prefix"
+
+          backend {
+            service {
+              name = "gitlab-registry"
+
+              port {
+                number = 5000
+              }
+            }
+          }
+        }
+      }
+    }
+  }
 }
 
 # --- AUTOMAÇÃO PÓS-INSTALL ---

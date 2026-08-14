@@ -65,6 +65,32 @@ output "uptime_kuma_url" {
   value       = module.uptime_kuma.url
 }
 
+output "mail_host" {
+  description = "Hostname publico para SMTP/Submission/IMAPS/JMAP."
+  value       = module.mail.mail_host
+}
+
+output "mail_webmail_url" {
+  description = "URL publica do webmail SnappyMail."
+  value       = module.mail.webmail_url
+}
+
+output "mail_admin_url" {
+  description = "URL publica da administracao do Stalwart."
+  value       = module.mail.admin_url
+}
+
+output "mail_recovery_admin_username" {
+  description = "Usuario inicial de recuperacao do Stalwart."
+  value       = "admin"
+}
+
+output "mail_recovery_admin_password" {
+  description = "Senha inicial de recuperacao do Stalwart."
+  value       = random_password.stalwart_recovery_admin_password.result
+  sensitive   = true
+}
+
 output "backup_mount_point" {
   description = "Ponto de montagem configurado para o disco de backup."
   value       = var.backup_mount_point

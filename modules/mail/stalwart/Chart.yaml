@@ -1,0 +1,9 @@
+apiVersion: v2
+name: stalwart
+description: Helm chart local para Stalwart Mail Server
+type: application
+version: 0.1.0
+appVersion: "v0.16"
+home: https://stalw.art
+sources:
+  - https://github.com/stalwartlabs/stalwart

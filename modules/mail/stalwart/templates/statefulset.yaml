@@ -1,0 +1,112 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "stalwart.fullname" . }}
+  labels:
+    {{- include "stalwart.labels" . | nindent 4 }}
+spec:
+  serviceName: {{ include "stalwart.fullname" . }}-headless
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "stalwart.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "stalwart.selectorLabels" . | nindent 8 }}
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+    spec:
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: stalwart
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args:
+            - --config
+            - /etc/stalwart/config.json
+          envFrom:
+            - secretRef:
+                name: {{ include "stalwart.fullname" . }}-env
+          {{- with .Values.extraEnv }}
+          env:
+            {{- range $key, $value := . }}
+            - name: {{ $key }}
+              value: {{ $value | quote }}
+            {{- end }}
+          {{- end }}
+          ports:
+            - name: smtp
+              containerPort: {{ .Values.service.ports.smtp }}
+            - name: smtps
+              containerPort: {{ .Values.service.ports.smtps }}
+            - name: submission
+              containerPort: {{ .Values.service.ports.submission }}
+            - name: imap
+              containerPort: {{ .Values.service.ports.imap }}
+            - name: imaps
+              containerPort: {{ .Values.service.ports.imaps }}
+            - name: pop3
+              containerPort: {{ .Values.service.ports.pop3 }}
+            - name: pop3s
+              containerPort: {{ .Values.service.ports.pop3s }}
+            - name: sieve
+              containerPort: {{ .Values.service.ports.sieve }}
+            - name: http
+              containerPort: {{ .Values.service.ports.http }}
+            - name: https
+              containerPort: {{ .Values.service.ports.https }}
+            - name: mgmt
+              containerPort: {{ .Values.service.ports.mgmt }}
+          livenessProbe:
+            httpGet:
+              path: /healthz/live
+              port: mgmt
+            initialDelaySeconds: 30
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 5
+          readinessProbe:
+            httpGet:
+              path: /healthz/ready
+              port: mgmt
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 6
+          volumeMounts:
+            - name: config
+              mountPath: /etc/stalwart/config.json
+              subPath: config.json
+              readOnly: true
+            - name: data
+              mountPath: /var/lib/stalwart
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          {{- with .Values.containerSecurityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+      volumes:
+        - name: config
+          configMap:
+            name: {{ include "stalwart.fullname" . }}-config
+  {{- if .Values.persistence.enabled }}
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes:
+          - {{ .Values.persistence.accessMode }}
+        {{- if .Values.persistence.storageClass }}
+        storageClassName: {{ .Values.persistence.storageClass | quote }}
+        {{- end }}
+        resources:
+          requests:
+            storage: {{ .Values.persistence.size }}
+  {{- else }}
+      volumes:
+        - name: data
+          emptyDir: {}
+  {{- end }}

@@ -165,6 +165,48 @@ variable "uptime_kuma_enable_certificate" {
   default     = false
 }
 
+variable "mail_hostname" {
+  description = "Subdominio dos protocolos SMTP/IMAP/JMAP do Stalwart."
+  type        = string
+  default     = "mail"
+}
+
+variable "mail_webmail_hostname" {
+  description = "Subdominio do webmail SnappyMail."
+  type        = string
+  default     = "webmail"
+}
+
+variable "mail_admin_hostname" {
+  description = "Subdominio da administracao do Stalwart."
+  type        = string
+  default     = "admin-mail"
+}
+
+variable "mail_stalwart_storage_size" {
+  description = "Tamanho do PVC de dados do Stalwart."
+  type        = string
+  default     = "50Gi"
+}
+
+variable "mail_snappymail_storage_size" {
+  description = "Tamanho do PVC de dados/configuracao do SnappyMail."
+  type        = string
+  default     = "5Gi"
+}
+
+variable "mail_server_ipv4" {
+  description = "IPv4 publico para mail.<dominio>. Sem este valor, MX/SPF/DMARC nao sao criados."
+  type        = string
+  default     = ""
+}
+
+variable "mail_server_ipv6" {
+  description = "IPv6 publico para mail.<dominio>, se utilizado."
+  type        = string
+  default     = ""
+}
+
 variable "kubernetes_config_path" {
   description = "Caminho do kubeconfig usado pelos providers Kubernetes, Helm e Kubectl. Use null para .k3d_kubeconfig local."
   type        = string
