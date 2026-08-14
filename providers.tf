@@ -54,20 +54,23 @@ locals {
 }
 
 provider "kubernetes" {
-  config_path = local.kubeconfig_path
-  insecure    = true
+  config_path    = local.kubeconfig_path
+  config_context = "k3d-mycluster"
+  insecure       = true
 }
 
 provider "helm" {
   kubernetes {
-    config_path = local.kubeconfig_path
-    insecure    = true
+    config_path    = local.kubeconfig_path
+    config_context = "k3d-mycluster"
+    insecure       = true
   }
 }
 
 provider "kubectl" {
-  config_path = local.kubeconfig_path
-  insecure    = true
+  config_path    = local.kubeconfig_path
+  config_context = "k3d-mycluster"
+  insecure       = true
 }
 
 provider "docker" {}
