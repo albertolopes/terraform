@@ -114,7 +114,7 @@ fi
 # Export kubeconfig
 # ==============================
 
-$K3D_BIN kubeconfig get "$name" --all > "$KUBECONFIG_PATH"
+$K3D_BIN kubeconfig get "$name" > "$KUBECONFIG_PATH"
 chmod 600 "$KUBECONFIG_PATH"
 
 echo "Wrote kubeconfig to $KUBECONFIG_PATH"

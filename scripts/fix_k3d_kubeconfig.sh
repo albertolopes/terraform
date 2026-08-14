@@ -7,7 +7,7 @@ CONTEXT=${CONTEXT:-"k3d-mycluster"}
 SERVER=${SERVER:-"https://127.0.0.1:6443"}
 
 if command -v k3d >/dev/null 2>&1 && k3d cluster list --no-headers | awk '{print $1}' | grep -xq "$CLUSTER"; then
-  k3d kubeconfig get "$CLUSTER" --all > "$KUBECONFIG_PATH"
+  k3d kubeconfig get "$CLUSTER" > "$KUBECONFIG_PATH"
 elif [ ! -f "$KUBECONFIG_PATH" ]; then
   echo "ERROR: kubeconfig not found and k3d cluster not available: $KUBECONFIG_PATH" >&2
   exit 1
