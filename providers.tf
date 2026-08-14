@@ -50,29 +50,21 @@ terraform {
 }
 
 locals {
-  kubeconfig_path       = var.kubernetes_config_path == null ? "${path.module}/.k3d_kubeconfig" : var.kubernetes_config_path
-  kubernetes_host_value = var.kubernetes_host == null ? "" : var.kubernetes_host
-  kubernetes_host       = contains(["", "0.0.0.0:6443", "https://0.0.0.0:6443"], local.kubernetes_host_value) ? "https://127.0.0.1:6443" : var.kubernetes_host
+  kubeconfig_path = var.kubernetes_config_path == null ? "${path.module}/.k3d_kubeconfig" : var.kubernetes_config_path
 }
 
 provider "kubernetes" {
-  host        = local.kubernetes_host
   config_path = local.kubeconfig_path
-  insecure    = true
 }
 
 provider "helm" {
   kubernetes {
-    host        = local.kubernetes_host
     config_path = local.kubeconfig_path
-    insecure    = true
   }
 }
 
 provider "kubectl" {
-  host        = local.kubernetes_host
   config_path = local.kubeconfig_path
-  insecure    = true
 }
 
 provider "docker" {}
