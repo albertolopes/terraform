@@ -51,22 +51,23 @@ terraform {
 
 locals {
   kubeconfig_path = var.kubernetes_config_path == null ? "${path.module}/.k3d_kubeconfig" : var.kubernetes_config_path
+  kubernetes_host = contains(["0.0.0.0:6443", "https://0.0.0.0:6443"], coalesce(var.kubernetes_host, "")) ? "https://127.0.0.1:6443" : var.kubernetes_host
 }
 
 provider "kubernetes" {
-  host        = var.kubernetes_host
+  host        = local.kubernetes_host
   config_path = local.kubeconfig_path
 }
 
 provider "helm" {
   kubernetes {
-    host        = var.kubernetes_host
+    host        = local.kubernetes_host
     config_path = local.kubeconfig_path
   }
 }
 
 provider "kubectl" {
-  host        = var.kubernetes_host
+  host        = local.kubernetes_host
   config_path = local.kubeconfig_path
 }
 
